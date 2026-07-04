@@ -1,0 +1,29 @@
+{
+  "name": "terraform",
+  "image": "ghcr.io/jay-withers/dev-container/terraform:latest",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "hashicorp.terraform",
+        "redhat.vscode-yaml",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "editorconfig.editorconfig"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[terraform]": {
+          "editor.defaultFormatter": "hashicorp.terraform"
+        },
+        "[terraform-vars]": {
+          "editor.defaultFormatter": "hashicorp.terraform"
+        }
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "make install"
+}

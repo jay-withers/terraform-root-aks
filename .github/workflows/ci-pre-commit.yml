@@ -1,0 +1,74 @@
+name: ci-pre-commit
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Resolve Terraform version
+        id: tfversion
+        run: echo "version=$(cat "$GITHUB_WORKSPACE/.terraform-version")" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfversion.outputs.version }}
+          terraform_wrapper: false
+
+      - name: Set up TFLint
+        uses: terraform-linters/setup-tflint@v6
+
+      - name: Initialise TFLint plugins
+        run: tflint --init --config "$GITHUB_WORKSPACE/terraform/.tflint.hcl"
+
+      - name: Install terraform-docs
+        run: |
+          curl -fsSL https://github.com/terraform-docs/terraform-docs/releases/download/v0.24.0/terraform-docs-v0.24.0-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin terraform-docs
+          chmod +x /usr/local/bin/terraform-docs
+
+      - name: Install Checkov
+        run: pip install checkov==3.3.2
+
+      - name: Install actionlint
+        run: |
+          curl -fsSL https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            | tar -xz -C /usr/local/bin actionlint
+
+      - name: Install gitleaks
+        run: |
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+
+      - name: Install pre-commit
+        run: pip install pre-commit==3.8.0
+
+      - name: Cache pre-commit envs
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit
+        env:
+          SKIP: no-commit-to-branch
+        run: pre-commit run --all-files

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:weekly"],
+  "autoApprove": true,
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "pre-commit": {
+    "fileMatch": ["(^|/)\\.pre-commit-config\\.yaml$"]
+  },
+  "regexManagers": [
+    {
+      "fileMatch": ["\\.github/workflows/ci-pre-commit\\.yml$"],
+      "matchStrings": [
+        "https://github\\.com/(?<depName>[^/]+/[^/]+)/releases/download/v(?<currentValue>[\\d.]+)/"
+      ],
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "fileMatch": ["\\.github/workflows/ci-pre-commit\\.yml$"],
+      "matchStrings": [
+        "pip install (?<depName>[a-z0-9-]+)==(?<currentValue>[\\d.]+)"
+      ],
+      "datasourceTemplate": "pypi"
+    },
+    {
+      "fileMatch": ["(^|/)\\.terraform-version$"],
+      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "hashicorp/terraform",
+      "datasourceTemplate": "github-releases"
+    }
+  ]
+}
