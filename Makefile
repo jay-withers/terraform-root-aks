@@ -1,8 +1,14 @@
 TF_DIR := terraform
 
+# Optional environment selector. `make plan ENV=dev` loads
+# environments/dev.tfvars; with no ENV set, the module defaults apply.
+ifdef ENV
+TF_VARS := -var-file=environments/$(ENV).tfvars
+endif
+
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint init fmt validate plan test
+.PHONY: help install lint init fmt validate plan apply test
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -24,8 +30,11 @@ fmt: ## terraform fmt -recursive
 validate: init ## terraform init + validate
 	terraform -chdir=$(TF_DIR) validate
 
-plan: init ## terraform init + plan
-	terraform -chdir=$(TF_DIR) plan
+plan: init ## terraform init + plan (set ENV=dev|stg|prd to load a tfvars file)
+	terraform -chdir=$(TF_DIR) plan $(TF_VARS)
+
+apply: init ## terraform init + apply (set ENV=dev|stg|prd to load a tfvars file)
+	terraform -chdir=$(TF_DIR) apply $(TF_VARS)
 
 test: init ## terraform test (mocked azurerm provider — no Azure auth)
 	terraform -chdir=$(TF_DIR) test

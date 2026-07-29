@@ -9,9 +9,8 @@
 crash.log
 crash.*.log
 
-# Variable definition files that may contain secrets
-*.tfvars
-*.tfvars.json
+# Note: *.tfvars are intentionally NOT ignored — they hold environment config,
+# not secrets. Secrets belong in a secret store / env vars / CI, never in tfvars.
 
 # CLI configuration and override files
 .terraformrc
