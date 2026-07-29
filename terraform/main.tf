@@ -70,5 +70,16 @@ module "aks" {
     tier = var.sku_tier
   }
 
+  # Node OS patching is automated; the Kubernetes version stays pinned to
+  # var.kubernetes_version and is bumped deliberately through Terraform.
+  auto_upgrade_profile = {
+    node_os_upgrade_channel = var.node_os_upgrade_channel
+    upgrade_channel         = var.kubernetes_upgrade_channel
+  }
+
+  # Windows constraining the channels above. Without these, AKS applies node
+  # image upgrades whenever it likes, including mid-business-hours.
+  maintenanceconfiguration = local.maintenance_configuration
+
   tags = local.tags
 }

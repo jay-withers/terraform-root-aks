@@ -99,6 +99,72 @@ variable "sku_tier" {
   default     = "Standard"
 }
 
+# --- upgrades and maintenance ----------------------------------------------
+# AKS has two independent auto-upgrade channels: one for the node OS image and
+# one for the Kubernetes version. Each is gated by a maintenance window with a
+# reserved name (see locals.tf) — without a window, upgrades land at a time of
+# Azure's choosing.
+
+variable "node_os_upgrade_channel" {
+  description = "How node OS updates are applied. \"NodeImage\" upgrades to the latest AKS-validated node image; \"SecurityPatch\" applies OS security patches in place; \"Unmanaged\" leaves patching to the OS's own updater; \"None\" disables it. Constrained to node_os_maintenance_window."
+  type        = string
+  default     = "NodeImage"
+
+  validation {
+    condition     = contains(["NodeImage", "SecurityPatch", "Unmanaged", "None"], var.node_os_upgrade_channel)
+    error_message = "node_os_upgrade_channel must be one of \"NodeImage\", \"SecurityPatch\", \"Unmanaged\", or \"None\"."
+  }
+}
+
+variable "kubernetes_upgrade_channel" {
+  description = "Auto-upgrade channel for the Kubernetes version itself. Defaults to \"none\" because var.kubernetes_version is pinned — anything else lets AKS move the version out from under Terraform, which then reports drift on every plan. Enable only alongside unpinning kubernetes_version. When not \"none\", cluster_maintenance_window applies."
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "patch", "stable", "rapid", "node-image"], var.kubernetes_upgrade_channel)
+    error_message = "kubernetes_upgrade_channel must be one of \"none\", \"patch\", \"stable\", \"rapid\", or \"node-image\"."
+  }
+}
+
+variable "node_os_maintenance_window" {
+  description = "When node OS updates are allowed to run. Defaults to a daily 4-hour window from 19:00 UTC. Times are in UTC unless utc_offset says otherwise; duration_hours must be 4-24."
+  type = object({
+    start_time     = optional(string, "19:00")
+    duration_hours = optional(number, 4)
+    interval_days  = optional(number, 1)
+    utc_offset     = optional(string, "+00:00")
+  })
+  default = {}
+
+  validation {
+    condition     = var.node_os_maintenance_window.duration_hours >= 4 && var.node_os_maintenance_window.duration_hours <= 24
+    error_message = "node_os_maintenance_window.duration_hours must be between 4 and 24."
+  }
+}
+
+variable "cluster_maintenance_window" {
+  description = "When Kubernetes version auto-upgrades are allowed to run. Inert unless kubernetes_upgrade_channel is set to something other than \"none\". Defaults to a weekly 4-hour window from 06:00 UTC on Sunday, clear of the daily node OS window; duration_hours must be 4-24."
+  type = object({
+    day_of_week    = optional(string, "Sunday")
+    start_time     = optional(string, "06:00")
+    duration_hours = optional(number, 4)
+    interval_weeks = optional(number, 1)
+    utc_offset     = optional(string, "+00:00")
+  })
+  default = {}
+
+  validation {
+    condition     = var.cluster_maintenance_window.duration_hours >= 4 && var.cluster_maintenance_window.duration_hours <= 24
+    error_message = "cluster_maintenance_window.duration_hours must be between 4 and 24."
+  }
+
+  validation {
+    condition     = contains(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], var.cluster_maintenance_window.day_of_week)
+    error_message = "cluster_maintenance_window.day_of_week must be a full English day name, e.g. \"Sunday\"."
+  }
+}
+
 variable "tags" {
   description = "Tags to apply to created resources."
   type        = map(string)
