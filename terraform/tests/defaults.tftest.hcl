@@ -11,7 +11,7 @@ run "plan_with_defaults" {
   # Example assertion — uncomment once the module creates resources/outputs:
   #
   # assert {
-  #   condition     = output.name == var.name
-  #   error_message = "output name did not match the requested name"
+  #   condition     = output.cluster_name == module.naming.kubernetes_cluster.name
+  #   error_message = "cluster name did not match the generated default"
   # }
 }
