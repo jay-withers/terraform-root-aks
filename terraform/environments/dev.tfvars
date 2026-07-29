@@ -1,9 +1,6 @@
 # Development environment — optimised for cost, not resilience.
 # Single zone, minimal nodes, no uptime SLA.
 
-environment = "dev"
-location    = "westeurope"
-
 # Single zone keeps dev cheap; no cross-zone HA.
 availability_zones = ["1"]
 
@@ -18,7 +15,3 @@ apps_max_count = 2
 
 monitoring_min_count = 1
 monitoring_max_count = 1
-
-tags = {
-  managed-by = "terraform"
-}

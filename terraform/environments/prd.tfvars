@@ -9,20 +9,3 @@
 #   min vCPU = 3(system) + 3(apps) + 3(monitoring) nodes x 2 = 18
 
 environment = "prd"
-location    = "westeurope"
-
-availability_zones = ["1", "2", "3"]
-
-sku_tier = "Standard"
-
-system_node_count = 3
-
-apps_min_count = 3
-apps_max_count = 6
-
-monitoring_min_count = 3
-monitoring_max_count = 6
-
-tags = {
-  managed-by = "terraform"
-}
