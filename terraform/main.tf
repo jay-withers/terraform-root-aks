@@ -86,6 +86,22 @@ module "aks" {
     workload_identity = {
       enabled = true
     }
+
+    # 24h is the shortest interval AKS accepts.
+    image_cleaner = {
+      enabled        = true
+      interval_hours = 24
+    }
+  }
+
+  # enable_secret_rotation polls Key Vault and refreshes already-mounted files and
+  # synced Secrets; it rotates nothing in Key Vault, and env vars still need a
+  # pod restart.
+  addon_profile_key_vault_secrets_provider = {
+    enabled = true
+    config = {
+      enable_secret_rotation = true
+    }
   }
 
   auto_upgrade_profile = {
