@@ -4,10 +4,17 @@ locals {
     managed-by  = "terraform"
   })
 
-  # "aksManagedNodeOSUpgradeSchedule" and "aksManagedAutoUpgradeSchedule" are
-  # reserved names: AKS binds a maintenance configuration to an auto-upgrade
-  # channel by name alone. Any other name creates a generic maintenance window
-  # that does *not* gate upgrades, so these strings must be exact.
+  # admin_group_object_ids is omitted deliberately: AKS binds those groups
+  # straight to cluster-admin, which no Azure role assignment can revoke. Grant
+  # admin with the "Azure Kubernetes Service RBAC Cluster Admin" role instead.
+  aad_profile = {
+    managed           = true
+    enable_azure_rbac = true
+    tenant_id         = data.azurerm_client_config.current.tenant_id
+  }
+
+  # These names are reserved: AKS binds a maintenance window to an auto-upgrade
+  # channel by name alone, and any other name gates nothing.
   maintenance_configuration = merge(
     {
       node_os = {
@@ -24,8 +31,7 @@ locals {
         }
       }
     },
-    # Only created when the Kubernetes auto-upgrade channel is on; with the
-    # channel at "none" the window would never fire.
+    # Inert unless the Kubernetes auto-upgrade channel is on.
     var.kubernetes_upgrade_channel == "none" ? {} : {
       cluster = {
         name = "aksManagedAutoUpgradeSchedule"

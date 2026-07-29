@@ -1,8 +1,5 @@
-# Node OS patching and Kubernetes upgrades are gated by maintenance windows
-# whose *names* are what bind them to AKS's auto-upgrade channels — a typo in a
-# name silently produces a window that gates nothing, so assert on them here.
-# The azurerm provider is mocked, so these run with no Azure credentials —
-# both locally (`make test`) and in CI (ci-terraform).
+# A typo in a maintenance configuration name silently produces a window that
+# gates nothing, so the reserved names are asserted here.
 
 mock_provider "azurerm" {}
 
@@ -23,8 +20,6 @@ run "node_os_window_uses_reserved_name" {
 run "cluster_window_absent_while_channel_is_none" {
   command = plan
 
-  # var.kubernetes_version is pinned, so the Kubernetes auto-upgrade channel is
-  # off by default and its window would never fire.
   assert {
     condition     = !contains(keys(local.maintenance_configuration), "cluster")
     error_message = "cluster maintenance window should not be created while kubernetes_upgrade_channel is \"none\""

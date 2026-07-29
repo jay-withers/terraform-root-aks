@@ -100,10 +100,8 @@ variable "sku_tier" {
 }
 
 # --- upgrades and maintenance ----------------------------------------------
-# AKS has two independent auto-upgrade channels: one for the node OS image and
-# one for the Kubernetes version. Each is gated by a maintenance window with a
-# reserved name (see locals.tf) — without a window, upgrades land at a time of
-# Azure's choosing.
+# Two independent auto-upgrade channels — node OS image and Kubernetes version —
+# each gated by its own maintenance window.
 
 variable "node_os_upgrade_channel" {
   description = "How node OS updates are applied. \"NodeImage\" upgrades to the latest AKS-validated node image; \"SecurityPatch\" applies OS security patches in place; \"Unmanaged\" leaves patching to the OS's own updater; \"None\" disables it. Constrained to node_os_maintenance_window."
@@ -164,6 +162,9 @@ variable "cluster_maintenance_window" {
     error_message = "cluster_maintenance_window.day_of_week must be a full English day name, e.g. \"Sunday\"."
   }
 }
+
+# Authentication and authorization take no inputs by design — Entra ID with Azure
+# RBAC, local accounts off, workload identity on. See locals.tf and main.tf.
 
 variable "tags" {
   description = "Tags to apply to created resources."
