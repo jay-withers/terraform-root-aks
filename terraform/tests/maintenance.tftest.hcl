@@ -1,7 +1,16 @@
 # A typo in a maintenance configuration name silently produces a window that
 # gates nothing, so the reserved names are asserted here.
 
-mock_provider "azurerm" {}
+mock_provider "azurerm" {
+  # azurerm_key_vault validates tenant_id as a UUID at plan time; the provider
+  # mock otherwise generates a random string.
+  mock_data "azurerm_client_config" {
+    defaults = {
+      tenant_id = "00000000-0000-0000-0000-000000000000"
+      object_id = "11111111-1111-1111-1111-111111111111"
+    }
+  }
+}
 
 run "node_os_window_uses_reserved_name" {
   command = plan

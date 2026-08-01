@@ -3,7 +3,16 @@
 #
 # Add `assert` blocks as the module grows; see the commented example below.
 
-mock_provider "azurerm" {}
+mock_provider "azurerm" {
+  # azurerm_key_vault validates tenant_id as a UUID at plan time; the provider
+  # mock otherwise generates a random string.
+  mock_data "azurerm_client_config" {
+    defaults = {
+      tenant_id = "00000000-0000-0000-0000-000000000000"
+      object_id = "11111111-1111-1111-1111-111111111111"
+    }
+  }
+}
 
 run "plan_with_defaults" {
   command = plan

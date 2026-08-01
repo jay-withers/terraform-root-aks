@@ -93,6 +93,118 @@ variable "availability_zones" {
   default     = ["1", "2", "3"]
 }
 
+# --- networking -------------------------------------------------------------
+# The cluster is private by design: the API server has no public endpoint, and
+# is reachable only from inside the VNet or via `az aks command invoke`. See
+# network.tf and locals.tf.
+#
+# The three ranges below must not overlap each other, the VNet, or anything the
+# VNet is peered with or routed to. AKS rejects overlaps at create time, which
+# is a slow way to find out.
+
+variable "vnet_address_space" {
+  description = "Address space of the cluster VNet. Must contain node_subnet_address_prefix and api_server_subnet_address_prefix, and must not overlap pod_cidr, service_cidr, or any peered network."
+  type        = string
+  default     = "10.0.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.vnet_address_space, 0))
+    error_message = "vnet_address_space must be a valid CIDR block."
+  }
+}
+
+variable "node_subnet_address_prefix" {
+  description = "Address prefix of the subnet holding the cluster nodes. Azure CNI Overlay places pods on pod_cidr rather than on VNet addresses, so this only has to accommodate the node count plus upgrade surge — not the pod count."
+  type        = string
+  default     = "10.0.0.0/22"
+
+  validation {
+    condition     = can(cidrhost(var.node_subnet_address_prefix, 0))
+    error_message = "node_subnet_address_prefix must be a valid CIDR block."
+  }
+}
+
+variable "api_server_subnet_address_prefix" {
+  description = "Address prefix of the subnet the API server is projected into by VNet integration. Delegated to Microsoft.ContainerService/managedClusters and dedicated to the API server; AKS requires /28 or larger."
+  type        = string
+  default     = "10.0.4.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.api_server_subnet_address_prefix, 0))
+    error_message = "api_server_subnet_address_prefix must be a valid CIDR block."
+  }
+
+  validation {
+    condition     = tonumber(split("/", var.api_server_subnet_address_prefix)[1]) <= 28
+    error_message = "api_server_subnet_address_prefix must be /28 or larger — AKS rejects a smaller API server subnet."
+  }
+}
+
+variable "pod_cidr" {
+  description = "Address range pods are allocated from under Azure CNI Overlay. Routed only inside the cluster, so it never consumes VNet addresses; defaults to CGNAT space to keep it clear of RFC1918 networks the VNet might peer with."
+  type        = string
+  default     = "100.64.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.pod_cidr, 0))
+    error_message = "pod_cidr must be a valid CIDR block."
+  }
+}
+
+variable "service_cidr" {
+  description = "Address range Kubernetes ClusterIP services are allocated from. Virtual to the cluster and never routed on the VNet, but must still not overlap it. The kube-dns service IP is derived from this as its tenth address."
+  type        = string
+  default     = "172.16.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.service_cidr, 10))
+    error_message = "service_cidr must be a valid CIDR block with room for at least ten addresses."
+  }
+}
+
+# --- jump box ---------------------------------------------------------------
+# The administrative path into the private cluster. See jumpbox.tf.
+
+variable "jumpbox_enabled" {
+  description = "Whether to create the jump box and its subnet. Turning this off leaves the cluster reachable only through `az aks command invoke` or a network path added elsewhere, so make sure one exists first."
+  type        = bool
+  default     = true
+}
+
+variable "jumpbox_subnet_address_prefix" {
+  description = "Address prefix of the jump box subnet. Sized for a single VM; must sit inside vnet_address_space and not overlap the node or API server subnets."
+  type        = string
+  default     = "10.0.5.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.jumpbox_subnet_address_prefix, 0))
+    error_message = "jumpbox_subnet_address_prefix must be a valid CIDR block."
+  }
+}
+
+variable "jumpbox_vm_size" {
+  description = "VM size for the jump box. Burstable by default — it spends most of its life idle, and the work it does (kubectl, helm, az) is interactive rather than sustained. Deallocate it when unused; compute stops billing, the disk does not."
+  type        = string
+  default     = "Standard_B2s_v2"
+}
+
+variable "jumpbox_key_expiry_date" {
+  description = "Optional RFC3339 expiry for the jump box SSH key secret, e.g. \"2027-01-01T00:00:00Z\". Null by default: Key Vault refuses to serve an expired secret, so a date nobody is watching locks everyone out of the only route into the cluster. Set it once a rotation process exists to meet it — rotation is a replace of tls_private_key.jumpbox_admin, not a re-apply."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.jumpbox_key_expiry_date == null || can(formatdate("YYYY-MM-DD", var.jumpbox_key_expiry_date))
+    error_message = "jumpbox_key_expiry_date must be an RFC3339 timestamp, e.g. \"2027-01-01T00:00:00Z\"."
+  }
+}
+
+variable "bastion_enabled" {
+  description = "Whether to create the Azure Bastion host that fronts the jump box. The Developer SKU is free and needs no dedicated subnet, but is not offered in every region — set this to false where var.location does not support it. Inert unless jumpbox_enabled is true."
+  type        = bool
+  default     = true
+}
+
 variable "sku_tier" {
   description = "AKS control plane pricing tier. One of \"Free\", \"Standard\", or \"Premium\". Standard adds the financially-backed API server uptime SLA — recommended for zone-resilient/production clusters."
   type        = string
