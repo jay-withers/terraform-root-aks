@@ -1,7 +1,12 @@
 variable "workload_name" {
-  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module."
+  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 12 characters by the Key Vault name length."
   type        = string
   default     = "main"
+
+  validation {
+    condition     = length(var.workload_name) <= 12
+    error_message = "workload_name must be 12 characters or fewer. Key Vault names are capped at 24, and the naming module builds \"kv-<workload_name>-<environment>-<4 random>\" — past that it truncates silently, which can collide across workloads or leave a trailing dash that Key Vault rejects at apply."
+  }
 }
 
 variable "environment" {
@@ -93,6 +98,118 @@ variable "availability_zones" {
   default     = ["1", "2", "3"]
 }
 
+# --- networking -------------------------------------------------------------
+# The cluster is private by design: the API server has no public endpoint, and
+# is reachable only from inside the VNet or via `az aks command invoke`. See
+# network.tf and locals.tf.
+#
+# The three ranges below must not overlap each other, the VNet, or anything the
+# VNet is peered with or routed to. AKS rejects overlaps at create time, which
+# is a slow way to find out.
+
+variable "vnet_address_space" {
+  description = "Address space of the cluster VNet. Must contain node_subnet_address_prefix and api_server_subnet_address_prefix, and must not overlap pod_cidr, service_cidr, or any peered network."
+  type        = string
+  default     = "10.0.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.vnet_address_space, 0))
+    error_message = "vnet_address_space must be a valid CIDR block."
+  }
+}
+
+variable "node_subnet_address_prefix" {
+  description = "Address prefix of the subnet holding the cluster nodes. Azure CNI Overlay places pods on pod_cidr rather than on VNet addresses, so this only has to accommodate the node count plus upgrade surge — not the pod count."
+  type        = string
+  default     = "10.0.0.0/22"
+
+  validation {
+    condition     = can(cidrhost(var.node_subnet_address_prefix, 0))
+    error_message = "node_subnet_address_prefix must be a valid CIDR block."
+  }
+}
+
+variable "api_server_subnet_address_prefix" {
+  description = "Address prefix of the subnet the API server is projected into by VNet integration. Delegated to Microsoft.ContainerService/managedClusters and dedicated to the API server; AKS requires /28 or larger."
+  type        = string
+  default     = "10.0.4.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.api_server_subnet_address_prefix, 0))
+    error_message = "api_server_subnet_address_prefix must be a valid CIDR block."
+  }
+
+  validation {
+    condition     = tonumber(split("/", var.api_server_subnet_address_prefix)[1]) <= 28
+    error_message = "api_server_subnet_address_prefix must be /28 or larger — AKS rejects a smaller API server subnet."
+  }
+}
+
+variable "pod_cidr" {
+  description = "Address range pods are allocated from under Azure CNI Overlay. Routed only inside the cluster, so it never consumes VNet addresses; defaults to CGNAT space to keep it clear of RFC1918 networks the VNet might peer with."
+  type        = string
+  default     = "100.64.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.pod_cidr, 0))
+    error_message = "pod_cidr must be a valid CIDR block."
+  }
+}
+
+variable "service_cidr" {
+  description = "Address range Kubernetes ClusterIP services are allocated from. Virtual to the cluster and never routed on the VNet, but must still not overlap it. The kube-dns service IP is derived from this as its tenth address."
+  type        = string
+  default     = "172.16.0.0/16"
+
+  validation {
+    condition     = can(cidrhost(var.service_cidr, 10))
+    error_message = "service_cidr must be a valid CIDR block with room for at least ten addresses."
+  }
+}
+
+# --- jump box ---------------------------------------------------------------
+# The administrative path into the private cluster. See jumpbox.tf.
+
+variable "jumpbox_enabled" {
+  description = "Whether to create the jump box and its subnet. Turning this off leaves the cluster reachable only through `az aks command invoke` or a network path added elsewhere, so make sure one exists first."
+  type        = bool
+  default     = true
+}
+
+variable "jumpbox_subnet_address_prefix" {
+  description = "Address prefix of the jump box subnet. Sized for a single VM; must sit inside vnet_address_space and not overlap the node or API server subnets."
+  type        = string
+  default     = "10.0.5.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.jumpbox_subnet_address_prefix, 0))
+    error_message = "jumpbox_subnet_address_prefix must be a valid CIDR block."
+  }
+}
+
+variable "jumpbox_vm_size" {
+  description = "VM size for the jump box. Burstable by default — it spends most of its life idle, and the work it does (kubectl, helm, az) is interactive rather than sustained. Deallocate it when unused; compute stops billing, the disk does not."
+  type        = string
+  default     = "Standard_B2s_v2"
+}
+
+variable "jumpbox_key_expiry_date" {
+  description = "Optional RFC3339 expiry for the jump box SSH key secret, e.g. \"2027-01-01T00:00:00Z\". Null by default: Key Vault refuses to serve an expired secret, so a date nobody is watching locks everyone out of the only route into the cluster. Set it once a rotation process exists to meet it — rotation is a replace of tls_private_key.jumpbox_admin, not a re-apply."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.jumpbox_key_expiry_date == null || can(formatdate("YYYY-MM-DD", var.jumpbox_key_expiry_date))
+    error_message = "jumpbox_key_expiry_date must be an RFC3339 timestamp, e.g. \"2027-01-01T00:00:00Z\"."
+  }
+}
+
+variable "bastion_enabled" {
+  description = "Whether to create the Azure Bastion host that fronts the jump box. The Developer SKU is free and needs no dedicated subnet, but is not offered in every region — set this to false where var.location does not support it. Inert unless jumpbox_enabled is true."
+  type        = bool
+  default     = true
+}
+
 variable "sku_tier" {
   description = "AKS control plane pricing tier. One of \"Free\", \"Standard\", or \"Premium\". Standard adds the financially-backed API server uptime SLA — recommended for zone-resilient/production clusters."
   type        = string
@@ -126,12 +243,13 @@ variable "kubernetes_upgrade_channel" {
 }
 
 variable "node_os_maintenance_window" {
-  description = "When node OS updates are allowed to run. Defaults to a daily 4-hour window from 19:00 UTC. Times are in UTC unless utc_offset says otherwise; duration_hours must be 4-24."
+  description = "When node OS updates are allowed to run. Defaults to a daily 4-hour window from 19:00 UTC. Times are in UTC unless utc_offset says otherwise; duration_hours must be 4-24. start_date is the date the window becomes active and must not be null — see the note in locals.tf."
   type = object({
     start_time     = optional(string, "19:00")
     duration_hours = optional(number, 4)
     interval_days  = optional(number, 1)
     utc_offset     = optional(string, "+00:00")
+    start_date     = optional(string, "2024-01-01")
   })
   default = {}
 
@@ -139,16 +257,22 @@ variable "node_os_maintenance_window" {
     condition     = var.node_os_maintenance_window.duration_hours >= 4 && var.node_os_maintenance_window.duration_hours <= 24
     error_message = "node_os_maintenance_window.duration_hours must be between 4 and 24."
   }
+
+  validation {
+    condition     = var.node_os_maintenance_window.start_date != null && can(formatdate("YYYY-MM-DD", "${var.node_os_maintenance_window.start_date}T00:00:00Z"))
+    error_message = "node_os_maintenance_window.start_date must be a YYYY-MM-DD date and cannot be null — AKS fills a null start date in itself, which leaves a diff on every plan."
+  }
 }
 
 variable "cluster_maintenance_window" {
-  description = "When Kubernetes version auto-upgrades are allowed to run. Inert unless kubernetes_upgrade_channel is set to something other than \"none\". Defaults to a weekly 4-hour window from 06:00 UTC on Sunday, clear of the daily node OS window; duration_hours must be 4-24."
+  description = "When Kubernetes version auto-upgrades are allowed to run. Inert unless kubernetes_upgrade_channel is set to something other than \"none\". Defaults to a weekly 4-hour window from 06:00 UTC on Sunday, clear of the daily node OS window; duration_hours must be 4-24. start_date is the date the window becomes active and must not be null — see the note in locals.tf."
   type = object({
     day_of_week    = optional(string, "Sunday")
     start_time     = optional(string, "06:00")
     duration_hours = optional(number, 4)
     interval_weeks = optional(number, 1)
     utc_offset     = optional(string, "+00:00")
+    start_date     = optional(string, "2024-01-01")
   })
   default = {}
 
@@ -160,6 +284,85 @@ variable "cluster_maintenance_window" {
   validation {
     condition     = contains(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], var.cluster_maintenance_window.day_of_week)
     error_message = "cluster_maintenance_window.day_of_week must be a full English day name, e.g. \"Sunday\"."
+  }
+
+  validation {
+    condition     = var.cluster_maintenance_window.start_date != null && can(formatdate("YYYY-MM-DD", "${var.cluster_maintenance_window.start_date}T00:00:00Z"))
+    error_message = "cluster_maintenance_window.start_date must be a YYYY-MM-DD date and cannot be null — AKS fills a null start date in itself, which leaves a diff on every plan."
+  }
+}
+
+# --- GitOps (Flux) ----------------------------------------------------------
+# Flux v2 arrives as the AKS microsoft.flux cluster extension, so it is installed
+# and upgraded through ARM rather than against the private API server. See flux.tf.
+
+variable "flux_enabled" {
+  description = "Whether to install the Flux v2 (microsoft.flux) cluster extension. On its own this only installs the controllers; set flux_git_repository_url to give them something to reconcile."
+  type        = bool
+  default     = true
+}
+
+variable "flux_git_repository_url" {
+  description = "Repository Flux reconciles the cluster from, e.g. \"https://github.com/org/repo.git\" or \"ssh://git@github.com/org/repo.git\". Null by default, which leaves the controllers installed but idle — a legitimate state if the GitRepository is created out-of-band. Inert unless flux_enabled is true. The git host must be reachable from the node subnet."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.flux_git_repository_url == null || can(regex("^(https://|ssh://|git@)", var.flux_git_repository_url))
+    error_message = "flux_git_repository_url must be an \"https://\", \"ssh://\", or \"git@\" URL."
+  }
+}
+
+variable "flux_git_branch" {
+  description = "Branch of flux_git_repository_url to track. Tags and commits are not exposed as inputs — a cluster that tracks a moving branch is the usual GitOps arrangement."
+  type        = string
+  default     = "main"
+}
+
+variable "flux_git_path" {
+  description = "Path inside the repository the cluster's Kustomization builds from, e.g. \"clusters/dev\". Null by default, which builds from the repository root — set it for the common layout where one repository serves several clusters. Flux fails to reconcile if the path does not exist."
+  type        = string
+  default     = null
+}
+
+variable "flux_sync_interval_seconds" {
+  description = "How often Flux polls the repository and re-applies the Kustomization. The floor is 30 seconds; shorter intervals mostly generate git host traffic, and a push-based webhook is the better answer if 60 seconds is too slow."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.flux_sync_interval_seconds >= 30
+    error_message = "flux_sync_interval_seconds must be at least 30."
+  }
+}
+
+variable "flux_git_credentials" {
+  description = "Credentials for a private repository, in their natural form — this module base64-encodes them for the ARM API. Empty by default, which is what a public repository needs. Use either the HTTPS pair (https_user with a PAT as https_key) or the SSH pair (ssh_private_key as a PEM, with ssh_known_hosts in known_hosts format), never both. These land in state; keep the backend encrypted and access-controlled."
+  type = object({
+    https_user      = optional(string)
+    https_key       = optional(string)
+    ssh_private_key = optional(string)
+    ssh_known_hosts = optional(string)
+  })
+  default   = {}
+  sensitive = true
+
+  validation {
+    condition = !(
+      (var.flux_git_credentials.https_user != null || var.flux_git_credentials.https_key != null) &&
+      var.flux_git_credentials.ssh_private_key != null
+    )
+    error_message = "flux_git_credentials must carry HTTPS or SSH credentials, not both — the ARM API rejects a git repository configured with each."
+  }
+
+  validation {
+    condition     = (var.flux_git_credentials.https_user == null) == (var.flux_git_credentials.https_key == null)
+    error_message = "flux_git_credentials.https_user and flux_git_credentials.https_key must be set together."
+  }
+
+  validation {
+    condition     = var.flux_git_credentials.ssh_private_key == null || var.flux_git_credentials.ssh_known_hosts != null
+    error_message = "flux_git_credentials.ssh_known_hosts must be set alongside ssh_private_key — Flux verifies the host key and the sync fails without it."
   }
 }
 

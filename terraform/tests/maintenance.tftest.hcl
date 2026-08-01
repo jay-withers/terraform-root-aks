@@ -1,7 +1,16 @@
 # A typo in a maintenance configuration name silently produces a window that
 # gates nothing, so the reserved names are asserted here.
 
-mock_provider "azurerm" {}
+mock_provider "azurerm" {
+  # azurerm_key_vault validates tenant_id as a UUID at plan time; the provider
+  # mock otherwise generates a random string.
+  mock_data "azurerm_client_config" {
+    defaults = {
+      tenant_id = "00000000-0000-0000-0000-000000000000"
+      object_id = "11111111-1111-1111-1111-111111111111"
+    }
+  }
+}
 
 run "node_os_window_uses_reserved_name" {
   command = plan
@@ -15,6 +24,37 @@ run "node_os_window_uses_reserved_name" {
     condition     = local.maintenance_configuration["node_os"].maintenance_window.schedule.daily.interval_days == 1
     error_message = "node OS maintenance window did not default to a nightly schedule"
   }
+}
+
+run "windows_send_a_start_date" {
+  command = plan
+
+  variables {
+    kubernetes_upgrade_channel = "patch"
+  }
+
+  # A null start_date is not a no-op: AKS fills it with the creation date and keeps
+  # it, so Terraform proposes startDate -> null on every plan and the apply is
+  # reverted server-side. The value only sets when the window first becomes active.
+  assert {
+    condition = alltrue([
+      local.maintenance_configuration["node_os"].maintenance_window.start_date != null,
+      local.maintenance_configuration["cluster"].maintenance_window.start_date != null,
+    ])
+    error_message = "both maintenance windows must send a start_date, or every plan shows a startDate diff that never converges"
+  }
+}
+
+run "rejects_a_start_date_that_is_not_a_date" {
+  command = plan
+
+  variables {
+    node_os_maintenance_window = {
+      start_date = "01-01-2024"
+    }
+  }
+
+  expect_failures = [var.node_os_maintenance_window]
 }
 
 run "cluster_window_absent_while_channel_is_none" {
