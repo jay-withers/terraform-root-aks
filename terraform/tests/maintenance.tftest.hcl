@@ -26,6 +26,37 @@ run "node_os_window_uses_reserved_name" {
   }
 }
 
+run "windows_send_a_start_date" {
+  command = plan
+
+  variables {
+    kubernetes_upgrade_channel = "patch"
+  }
+
+  # A null start_date is not a no-op: AKS fills it with the creation date and keeps
+  # it, so Terraform proposes startDate -> null on every plan and the apply is
+  # reverted server-side. The value only sets when the window first becomes active.
+  assert {
+    condition = alltrue([
+      local.maintenance_configuration["node_os"].maintenance_window.start_date != null,
+      local.maintenance_configuration["cluster"].maintenance_window.start_date != null,
+    ])
+    error_message = "both maintenance windows must send a start_date, or every plan shows a startDate diff that never converges"
+  }
+}
+
+run "rejects_a_start_date_that_is_not_a_date" {
+  command = plan
+
+  variables {
+    node_os_maintenance_window = {
+      start_date = "01-01-2024"
+    }
+  }
+
+  expect_failures = [var.node_os_maintenance_window]
+}
+
 run "cluster_window_absent_while_channel_is_none" {
   command = plan
 

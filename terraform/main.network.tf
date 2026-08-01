@@ -14,6 +14,14 @@ resource "azurerm_virtual_network" "this" {
 
 # Nodes only. Azure CNI Overlay keeps pods on var.pod_cidr rather than on VNet
 # addresses, so this sizes to the node count, not the pod count.
+#
+# The subnets are the one set of names here that stay role-only, rather than the
+# <type>-<workload>-<environment>-<role> form the rest use. They are scoped inside
+# a VNet that already carries the workload and environment, and renaming one is not
+# a cheap change: the node pools
+# take vnet_subnet_id at create time only, so a new subnet name replaces the
+# cluster — and the destroy fails while node pools are still attached, so it is a
+# tear-down and rebuild rather than a rename.
 resource "azurerm_subnet" "nodes" {
   name                 = "snet-nodes"
   resource_group_name  = azurerm_resource_group.this.name
@@ -61,7 +69,7 @@ resource "azurerm_subnet" "api_server" {
 # subnet. Exposing something publicly means an explicit inbound rule here — which
 # for a private cluster should be a deliberate act, not a default.
 resource "azurerm_network_security_group" "nodes" {
-  name                = "nsg-nodes"
+  name                = "${module.naming.network_security_group.name}-nodes"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.tags
@@ -73,7 +81,7 @@ resource "azurerm_subnet_network_security_group_association" "nodes" {
 }
 
 resource "azurerm_network_security_group" "api_server" {
-  name                = "nsg-apiserver"
+  name                = "${module.naming.network_security_group.name}-apiserver"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.tags

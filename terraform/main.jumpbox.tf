@@ -10,6 +10,7 @@ resource "azurerm_subnet" "jumpbox" {
   #checkov:skip=CKV2_AZURE_31:An NSG is associated below. Checkov cannot follow the reference through the count index, and reports the same subnet clean once count is removed.
   count = var.jumpbox_enabled ? 1 : 0
 
+  # Role-only, like the other subnets — see the note on azurerm_subnet.nodes.
   name                 = "snet-jumpbox"
   resource_group_name  = azurerm_resource_group.this.name
   virtual_network_name = azurerm_virtual_network.this.name
@@ -19,7 +20,7 @@ resource "azurerm_subnet" "jumpbox" {
 resource "azurerm_network_security_group" "jumpbox" {
   count = var.jumpbox_enabled ? 1 : 0
 
-  name                = "nsg-jumpbox"
+  name                = "${module.naming.network_security_group.name}-jumpbox"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.tags
@@ -52,7 +53,7 @@ resource "azurerm_subnet_network_security_group_association" "jumpbox" {
 resource "azurerm_network_interface" "jumpbox" {
   count = var.jumpbox_enabled ? 1 : 0
 
-  name                = "nic-jumpbox"
+  name                = "${module.naming.network_interface.name}-jumpbox"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   tags                = local.tags
@@ -159,7 +160,7 @@ resource "azurerm_linux_virtual_machine" "jumpbox" {
   #checkov:skip=CKV_AZURE_50:Extensions are required, not incidental — AADSSHLoginForLinux is installed so that upgrading Bastion to Basic retires the Key Vault key in favour of Entra ID sign-in. Disabling extension operations would foreclose that.
   count = var.jumpbox_enabled ? 1 : 0
 
-  name                = "vm-jumpbox"
+  name                = "${module.naming.linux_virtual_machine.name}-jumpbox"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   size                = var.jumpbox_vm_size
@@ -248,7 +249,10 @@ resource "azurerm_virtual_machine_extension" "jumpbox_entra_login" {
 resource "azurerm_bastion_host" "this" {
   count = var.jumpbox_enabled && var.bastion_enabled ? 1 : 0
 
-  name                = "bas-${var.workload_name}-${var.environment}"
+  # Named by hand rather than from the naming module on purpose: that module's
+  # bastion_host slug is "snap", not "bas" — module.naming.bastion_host.name
+  # returns "snap-main-dev". "bas" is the CAF abbreviation, so this stays literal.
+  name                = "bas-${local.name_suffix}"
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   sku                 = "Developer"

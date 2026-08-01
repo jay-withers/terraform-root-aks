@@ -73,6 +73,16 @@ output "oidc_issuer_url" {
   value       = module.aks.oidc_issuer_profile_issuer_url
 }
 
+output "flux_extension_id" {
+  description = "Resource ID of the microsoft.flux cluster extension, or null when flux_enabled is false."
+  value       = one(azurerm_kubernetes_cluster_extension.flux[*].id)
+}
+
+output "flux_configuration_id" {
+  description = "Resource ID of the Flux configuration reconciling the cluster, or null when no flux_git_repository_url is set. Null here with a non-null flux_extension_id means Flux is installed but syncing nothing."
+  value       = one(azurerm_kubernetes_flux_configuration.this[*].id)
+}
+
 output "node_resource_group_name" {
   description = "Name of the auto-generated resource group holding the cluster's node resources."
   value       = module.aks.node_resource_group_name
