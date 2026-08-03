@@ -45,8 +45,10 @@ run "api_server_is_private" {
 run "api_server_subnet_is_delegated_to_aks" {
   command = plan
 
+  # The subnets are created inside the AVM virtual network module, so the map that
+  # configures them is what a test can reach. See local.subnets.
   assert {
-    condition     = one(azurerm_subnet.api_server.delegation).service_delegation[0].name == "Microsoft.ContainerService/managedClusters"
+    condition     = one(local.subnets["api_server"].delegations).service_delegation.name == "Microsoft.ContainerService/managedClusters"
     error_message = "VNet integration requires the API server subnet delegated to Microsoft.ContainerService/managedClusters"
   }
 }
@@ -105,7 +107,7 @@ run "every_pool_lands_in_the_node_subnet" {
   # A pool left without a subnet silently falls back to an AKS-managed VNet,
   # which would sit outside the private network entirely.
   assert {
-    condition     = azurerm_subnet.nodes.address_prefixes == tolist([var.node_subnet_address_prefix])
+    condition     = local.subnets["nodes"].address_prefix == var.node_subnet_address_prefix
     error_message = "the node subnet must use the configured prefix"
   }
 }
@@ -113,16 +115,44 @@ run "every_pool_lands_in_the_node_subnet" {
 run "cluster_identity_can_join_both_subnets" {
   command = plan
 
-  # Scopes are unknown until apply; referencing both assignments at all is what
-  # catches one being dropped, and the role name is what catches it being
-  # widened or weakened.
+  # The grants are properties of the subnets rather than resources of their own.
+  # Asserting on each subnet's map is what catches one being dropped, and the role
+  # name is what catches it being widened or weakened.
   assert {
-    condition     = azurerm_role_assignment.aks_nodes_subnet.role_definition_name == "Network Contributor"
+    condition     = local.subnets["nodes"].role_assignments["aks"].role_definition_id_or_name == "Network Contributor"
     error_message = "the cluster identity must be able to join the node subnet"
   }
 
   assert {
-    condition     = azurerm_role_assignment.aks_api_server_subnet.role_definition_name == "Network Contributor"
+    condition     = local.subnets["api_server"].role_assignments["aks"].role_definition_id_or_name == "Network Contributor"
     error_message = "the cluster identity must be able to join the API server subnet"
+  }
+
+  # Reaching the jump box and the private endpoints is not the cluster's business.
+  assert {
+    condition = alltrue([
+      !contains(keys(local.subnets["jumpbox"]), "role_assignments"),
+      !contains(keys(local.subnets["privatelink"]), "role_assignments"),
+    ])
+    error_message = "the cluster identity must not hold rights over the jump box or private link subnets"
+  }
+}
+
+run "the_jump_box_subnet_can_reach_the_internet" {
+  command = plan
+
+  # Not a nicety: the jump box has no NAT gateway and no load balancer, and its
+  # cloud-init installs the Azure CLI, kubectl, helm and flux from the internet on
+  # first boot. defaultOutboundAccess is create-time only, so getting this wrong is
+  # a rebuild of the box, not a setting to correct.
+  assert {
+    condition     = local.subnets["jumpbox"].default_outbound_access_enabled
+    error_message = "the jump box subnet needs default outbound access; nothing else gives it egress and cloud-init would fail"
+  }
+
+  # A private endpoint originates nothing.
+  assert {
+    condition     = !local.subnets["privatelink"].default_outbound_access_enabled
+    error_message = "the private link subnet has no reason to reach the internet"
   }
 }

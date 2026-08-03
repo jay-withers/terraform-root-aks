@@ -1,11 +1,11 @@
 variable "workload_name" {
-  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 12 characters by the Key Vault name length."
+  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 9 characters by the Key Vault name length."
   type        = string
   default     = "main"
 
   validation {
-    condition     = length(var.workload_name) <= 12
-    error_message = "workload_name must be 12 characters or fewer. Key Vault names are capped at 24, and the naming module builds \"kv-<workload_name>-<environment>-<4 random>\" — past that it truncates silently, which can collide across workloads or leave a trailing dash that Key Vault rejects at apply."
+    condition     = length(var.workload_name) <= 9
+    error_message = "workload_name must be 9 characters or fewer. Key Vault names are capped at 24, and this module builds two — \"kv-<workload_name>-<environment>-jumpbox\" and \"-secrets\" — which reach exactly 24 at 9 characters. Past that the name is truncated, and since a vault name is a global DNS label, a truncated one is both unreadable and more likely to collide with a vault already claimed in another tenant."
   }
 }
 
@@ -167,8 +167,34 @@ variable "service_cidr" {
   }
 }
 
+variable "privatelink_subnet_address_prefix" {
+  description = "Address prefix of the subnet holding private endpoints. Must sit inside vnet_address_space and not overlap the node, API server, or jump box subnets. Inert unless workload_key_vault_enabled is true — nothing else in this module takes a private endpoint yet."
+  type        = string
+  default     = "10.0.6.0/28"
+
+  validation {
+    condition     = can(cidrhost(var.privatelink_subnet_address_prefix, 0))
+    error_message = "privatelink_subnet_address_prefix must be a valid CIDR block."
+  }
+}
+
+# --- workload Key Vault -----------------------------------------------------
+# Application secrets, behind a private endpoint. See main.keyvault.tf.
+
+variable "workload_key_vault_enabled" {
+  description = "Whether to create the workload Key Vault, its private endpoint, the privatelink.vaultcore.azure.net private DNS zone, and the subnet and NSG that host the endpoint. The vault has no public endpoint, so its data plane is reachable only from the VNet — via the jump box, a peered network, or the Key Vault CSI driver. Set to false in a hub-and-spoke landing zone where the DNS zone is owned centrally, since a VNet can link to only one zone of a given name."
+  type        = bool
+  default     = true
+}
+
+variable "workload_key_vault_secrets_users" {
+  description = "Principal IDs to grant \"Key Vault Secrets User\" on the workload Key Vault — read-only access to secret values. This is where a workload identity goes: the object ID of the user-assigned identity federated to the Kubernetes service account that mounts secrets through the Key Vault CSI driver. Empty by default, which leaves only the deploying identity able to manage the vault. Inert unless workload_key_vault_enabled is true."
+  type        = list(string)
+  default     = []
+}
+
 # --- jump box ---------------------------------------------------------------
-# The administrative path into the private cluster. See jumpbox.tf.
+# The administrative path into the private cluster. See main.jumpbox.tf.
 
 variable "jumpbox_enabled" {
   description = "Whether to create the jump box and its subnet. Turning this off leaves the cluster reachable only through `az aks command invoke` or a network path added elsewhere, so make sure one exists first."

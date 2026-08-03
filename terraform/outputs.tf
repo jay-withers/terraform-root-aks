@@ -1,6 +1,11 @@
 output "resource_group_name" {
   description = "Name of the resource group containing the AKS cluster."
-  value       = azurerm_resource_group.this.name
+  value       = module.resource_group.name
+}
+
+output "resource_group_id" {
+  description = "Resource ID of the resource group containing the AKS cluster. Use as the scope when granting a role over everything this module creates."
+  value       = module.resource_group.resource_id
 }
 
 output "cluster_name" {
@@ -25,47 +30,72 @@ output "private_fqdn" {
 
 output "virtual_network_id" {
   description = "Resource ID of the cluster VNet. Use as the remote side when peering, or as the target of a private DNS zone virtual network link."
-  value       = azurerm_virtual_network.this.id
+  value       = module.vnet.resource_id
 }
 
 output "virtual_network_name" {
   description = "Name of the cluster VNet."
-  value       = azurerm_virtual_network.this.name
+  value       = module.vnet.name
 }
 
 output "node_subnet_id" {
   description = "Resource ID of the subnet holding the cluster nodes."
-  value       = azurerm_subnet.nodes.id
+  value       = module.vnet.subnets["nodes"].resource_id
 }
 
 output "api_server_subnet_id" {
   description = "Resource ID of the subnet the API server is projected into by VNet integration."
-  value       = azurerm_subnet.api_server.id
+  value       = module.vnet.subnets["api_server"].resource_id
+}
+
+output "privatelink_subnet_id" {
+  description = "Resource ID of the subnet holding private endpoints, or null when workload_key_vault_enabled is false. Use as the subnet for further private endpoints rather than adding another subnet."
+  value       = local.privatelink_subnet_id
 }
 
 output "jumpbox_id" {
   description = "Resource ID of the jump box VM, or null when jumpbox_enabled is false. Use as the scope when granting operators \"Virtual Machine Administrator Login\"."
-  value       = one(azurerm_linux_virtual_machine.jumpbox[*].id)
+  value       = one(module.jumpbox[*].resource_id)
 }
 
 output "jumpbox_private_ip" {
   description = "Private IP of the jump box, or null when jumpbox_enabled is false. Informational — connect through Bastion rather than to this address."
-  value       = one(azurerm_linux_virtual_machine.jumpbox[*].private_ip_address)
+  value       = one(module.jumpbox[*].virtual_machine_azurerm.private_ip_address)
 }
 
 output "jumpbox_key_vault_name" {
   description = "Name of the Key Vault holding the jump box SSH private key, or null when jumpbox_enabled is false. Select this vault in the Bastion connection pane."
-  value       = one(azurerm_key_vault.jumpbox[*].name)
+  value       = one(module.jumpbox_key_vault[*].name)
 }
 
 output "jumpbox_ssh_secret_name" {
   description = "Name of the Key Vault secret holding the jump box SSH private key. Connect with authentication type \"SSH Private Key from Azure Key Vault\" and username \"azureuser\"."
-  value       = one(azurerm_key_vault_secret.jumpbox_ssh_private_key[*].name)
+  value       = local.jumpbox_key_vault_secrets["ssh_private_key"].name
+}
+
+output "workload_key_vault_id" {
+  description = "Resource ID of the workload Key Vault, or null when workload_key_vault_enabled is false. Use as the scope when granting a workload identity access outside this module."
+  value       = one(module.workload_key_vault[*].resource_id)
+}
+
+output "workload_key_vault_name" {
+  description = "Name of the workload Key Vault, or null when workload_key_vault_enabled is false. Derived as \"kv-<workload_name>-<environment>-secrets\", against the jump box vault's \"-jumpbox\"."
+  value       = one(module.workload_key_vault[*].name)
+}
+
+output "workload_key_vault_uri" {
+  description = "Data-plane URI of the workload Key Vault, or null when workload_key_vault_enabled is false. Resolves to the private endpoint's address from inside the VNet and to nothing usable from outside it — this is the value a SecretProviderClass takes as its keyvaultName's vault URI."
+  value       = one(module.workload_key_vault[*].uri)
+}
+
+output "key_vault_private_dns_zone_id" {
+  description = "Resource ID of the privatelink.vaultcore.azure.net private DNS zone, or null when workload_key_vault_enabled is false. Link a peered VNet to this zone so clients there resolve the vault to its private endpoint."
+  value       = one(module.key_vault_private_dns_zone[*].resource_id)
 }
 
 output "cluster_identity_principal_id" {
   description = "Principal ID of the user-assigned identity the cluster control plane runs as. Grant this rights on resources the control plane itself must reach, not workloads — those should use workload identity via oidc_issuer_url."
-  value       = azurerm_user_assigned_identity.aks.principal_id
+  value       = module.aks_identity.principal_id
 }
 
 output "oidc_issuer_url" {
