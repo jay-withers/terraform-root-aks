@@ -47,7 +47,7 @@ jobs:
           chmod +x /usr/local/bin/terraform-docs
 
       - name: Install Checkov
-        run: pip install checkov==3.3.2
+        run: pip install checkov==3.3.9
 
       - name: Install actionlint
         run: |
