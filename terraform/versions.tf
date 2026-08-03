@@ -6,6 +6,12 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    # Used only by the AVM modules, but declared here so the tests can mock it —
+    # `mock_provider "azapi"` otherwise resolves to hashicorp/azapi.
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.0"
+    }
     # Generates the throwaway admin key the Azure VM API insists on; see
     # jumpbox.tf. Entra ID is the actual login path.
     tls = {

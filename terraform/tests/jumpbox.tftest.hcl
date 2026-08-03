@@ -15,6 +15,18 @@ mock_provider "azurerm" {
     }
   }
 }
+
+# The AVM modules reach Azure through azapi, and build resource IDs from the
+# client config — an unmocked subscription_id fails ID validation at plan time.
+mock_provider "azapi" {
+  mock_data "azapi_client_config" {
+    defaults = {
+      subscription_id = "22222222-2222-2222-2222-222222222222"
+      tenant_id       = "00000000-0000-0000-0000-000000000000"
+      object_id       = "11111111-1111-1111-1111-111111111111"
+    }
+  }
+}
 mock_provider "tls" {}
 
 run "jumpbox_has_no_public_ip" {
