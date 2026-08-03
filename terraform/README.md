@@ -6,6 +6,7 @@
 | Name | Version |
 | ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.6 |
+| <a name="requirement_azapi"></a> [azapi](#requirement\_azapi) | ~> 2.0 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | ~> 4.0 |
 | <a name="requirement_tls"></a> [tls](#requirement\_tls) | ~> 4.0 |
 
@@ -13,7 +14,7 @@
 
 | Name | Version |
 | ---- | ------- |
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.80.0 |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
 | <a name="provider_tls"></a> [tls](#provider\_tls) | 4.3.0 |
 
 ## Modules
@@ -21,35 +22,26 @@
 | Name | Source | Version |
 | ---- | ------ | ------- |
 | <a name="module_aks"></a> [aks](#module\_aks) | Azure/avm-res-containerservice-managedcluster/azurerm | ~> 0.6 |
+| <a name="module_aks_identity"></a> [aks\_identity](#module\_aks\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
+| <a name="module_bastion"></a> [bastion](#module\_bastion) | Azure/avm-res-network-bastionhost/azurerm | ~> 0.9 |
+| <a name="module_jumpbox"></a> [jumpbox](#module\_jumpbox) | Azure/avm-res-compute-virtualmachine/azurerm | ~> 0.21 |
+| <a name="module_jumpbox_key_vault"></a> [jumpbox\_key\_vault](#module\_jumpbox\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.10 |
+| <a name="module_key_vault_private_dns_zone"></a> [key\_vault\_private\_dns\_zone](#module\_key\_vault\_private\_dns\_zone) | Azure/avm-res-network-privatednszone/azurerm | ~> 0.5 |
 | <a name="module_naming"></a> [naming](#module\_naming) | Azure/naming/azurerm | ~> 0.4 |
+| <a name="module_nsg_api_server"></a> [nsg\_api\_server](#module\_nsg\_api\_server) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
+| <a name="module_nsg_jumpbox"></a> [nsg\_jumpbox](#module\_nsg\_jumpbox) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
+| <a name="module_nsg_nodes"></a> [nsg\_nodes](#module\_nsg\_nodes) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
+| <a name="module_nsg_privatelink"></a> [nsg\_privatelink](#module\_nsg\_privatelink) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
+| <a name="module_resource_group"></a> [resource\_group](#module\_resource\_group) | Azure/avm-res-resources-resourcegroup/azurerm | ~> 0.4 |
+| <a name="module_vnet"></a> [vnet](#module\_vnet) | Azure/avm-res-network-virtualnetwork/azurerm | ~> 0.20 |
+| <a name="module_workload_key_vault"></a> [workload\_key\_vault](#module\_workload\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.10 |
 
 ## Resources
 
 | Name | Type |
 | ---- | ---- |
-| [azurerm_bastion_host.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/bastion_host) | resource |
-| [azurerm_key_vault.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault) | resource |
-| [azurerm_key_vault_secret.jumpbox_ssh_private_key](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/key_vault_secret) | resource |
 | [azurerm_kubernetes_cluster_extension.flux](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster_extension) | resource |
 | [azurerm_kubernetes_flux_configuration.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_flux_configuration) | resource |
-| [azurerm_linux_virtual_machine.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/linux_virtual_machine) | resource |
-| [azurerm_network_interface.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_interface) | resource |
-| [azurerm_network_security_group.api_server](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group) | resource |
-| [azurerm_network_security_group.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group) | resource |
-| [azurerm_network_security_group.nodes](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/network_security_group) | resource |
-| [azurerm_resource_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) | resource |
-| [azurerm_role_assignment.aks_api_server_subnet](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
-| [azurerm_role_assignment.aks_nodes_subnet](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
-| [azurerm_role_assignment.jumpbox_secrets](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
-| [azurerm_subnet.api_server](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet) | resource |
-| [azurerm_subnet.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet) | resource |
-| [azurerm_subnet.nodes](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet) | resource |
-| [azurerm_subnet_network_security_group_association.api_server](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet_network_security_group_association) | resource |
-| [azurerm_subnet_network_security_group_association.jumpbox](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet_network_security_group_association) | resource |
-| [azurerm_subnet_network_security_group_association.nodes](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subnet_network_security_group_association) | resource |
-| [azurerm_user_assigned_identity.aks](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/user_assigned_identity) | resource |
-| [azurerm_virtual_machine_extension.jumpbox_entra_login](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_machine_extension) | resource |
-| [azurerm_virtual_network.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_network) | resource |
 | [tls_private_key.jumpbox_admin](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
 
@@ -85,13 +77,16 @@
 | <a name="input_node_os_upgrade_channel"></a> [node\_os\_upgrade\_channel](#input\_node\_os\_upgrade\_channel) | How node OS updates are applied. "NodeImage" upgrades to the latest AKS-validated node image; "SecurityPatch" applies OS security patches in place; "Unmanaged" leaves patching to the OS's own updater; "None" disables it. Constrained to node\_os\_maintenance\_window. | `string` | `"NodeImage"` | no |
 | <a name="input_node_subnet_address_prefix"></a> [node\_subnet\_address\_prefix](#input\_node\_subnet\_address\_prefix) | Address prefix of the subnet holding the cluster nodes. Azure CNI Overlay places pods on pod\_cidr rather than on VNet addresses, so this only has to accommodate the node count plus upgrade surge — not the pod count. | `string` | `"10.0.0.0/22"` | no |
 | <a name="input_pod_cidr"></a> [pod\_cidr](#input\_pod\_cidr) | Address range pods are allocated from under Azure CNI Overlay. Routed only inside the cluster, so it never consumes VNet addresses; defaults to CGNAT space to keep it clear of RFC1918 networks the VNet might peer with. | `string` | `"100.64.0.0/16"` | no |
+| <a name="input_privatelink_subnet_address_prefix"></a> [privatelink\_subnet\_address\_prefix](#input\_privatelink\_subnet\_address\_prefix) | Address prefix of the subnet holding private endpoints. Must sit inside vnet\_address\_space and not overlap the node, API server, or jump box subnets. Inert unless workload\_key\_vault\_enabled is true — nothing else in this module takes a private endpoint yet. | `string` | `"10.0.6.0/28"` | no |
 | <a name="input_service_cidr"></a> [service\_cidr](#input\_service\_cidr) | Address range Kubernetes ClusterIP services are allocated from. Virtual to the cluster and never routed on the VNet, but must still not overlap it. The kube-dns service IP is derived from this as its tenth address. | `string` | `"172.16.0.0/16"` | no |
 | <a name="input_sku_tier"></a> [sku\_tier](#input\_sku\_tier) | AKS control plane pricing tier. One of "Free", "Standard", or "Premium". Standard adds the financially-backed API server uptime SLA — recommended for zone-resilient/production clusters. | `string` | `"Standard"` | no |
 | <a name="input_system_node_count"></a> [system\_node\_count](#input\_system\_node\_count) | Number of nodes in the system node pool. Defaults to one per availability zone for zone resilience. | `number` | `3` | no |
 | <a name="input_system_vm_size"></a> [system\_vm\_size](#input\_system\_vm\_size) | VM size for the system node pool. | `string` | `"Standard_D2s_v6"` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags to apply to created resources. | `map(string)` | `{}` | no |
 | <a name="input_vnet_address_space"></a> [vnet\_address\_space](#input\_vnet\_address\_space) | Address space of the cluster VNet. Must contain node\_subnet\_address\_prefix and api\_server\_subnet\_address\_prefix, and must not overlap pod\_cidr, service\_cidr, or any peered network. | `string` | `"10.0.0.0/16"` | no |
-| <a name="input_workload_name"></a> [workload\_name](#input\_workload\_name) | Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 12 characters by the Key Vault name length. | `string` | `"main"` | no |
+| <a name="input_workload_key_vault_enabled"></a> [workload\_key\_vault\_enabled](#input\_workload\_key\_vault\_enabled) | Whether to create the workload Key Vault, its private endpoint, the privatelink.vaultcore.azure.net private DNS zone, and the subnet and NSG that host the endpoint. The vault has no public endpoint, so its data plane is reachable only from the VNet — via the jump box, a peered network, or the Key Vault CSI driver. Set to false in a hub-and-spoke landing zone where the DNS zone is owned centrally, since a VNet can link to only one zone of a given name. | `bool` | `true` | no |
+| <a name="input_workload_key_vault_secrets_users"></a> [workload\_key\_vault\_secrets\_users](#input\_workload\_key\_vault\_secrets\_users) | Principal IDs to grant "Key Vault Secrets User" on the workload Key Vault — read-only access to secret values. This is where a workload identity goes: the object ID of the user-assigned identity federated to the Kubernetes service account that mounts secrets through the Key Vault CSI driver. Empty by default, which leaves only the deploying identity able to manage the vault. Inert unless workload\_key\_vault\_enabled is true. | `list(string)` | `[]` | no |
+| <a name="input_workload_name"></a> [workload\_name](#input\_workload\_name) | Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 9 characters by the Key Vault name length. | `string` | `"main"` | no |
 
 ## Outputs
 
@@ -108,11 +103,17 @@
 | <a name="output_jumpbox_key_vault_name"></a> [jumpbox\_key\_vault\_name](#output\_jumpbox\_key\_vault\_name) | Name of the Key Vault holding the jump box SSH private key, or null when jumpbox\_enabled is false. Select this vault in the Bastion connection pane. |
 | <a name="output_jumpbox_private_ip"></a> [jumpbox\_private\_ip](#output\_jumpbox\_private\_ip) | Private IP of the jump box, or null when jumpbox\_enabled is false. Informational — connect through Bastion rather than to this address. |
 | <a name="output_jumpbox_ssh_secret_name"></a> [jumpbox\_ssh\_secret\_name](#output\_jumpbox\_ssh\_secret\_name) | Name of the Key Vault secret holding the jump box SSH private key. Connect with authentication type "SSH Private Key from Azure Key Vault" and username "azureuser". |
+| <a name="output_key_vault_private_dns_zone_id"></a> [key\_vault\_private\_dns\_zone\_id](#output\_key\_vault\_private\_dns\_zone\_id) | Resource ID of the privatelink.vaultcore.azure.net private DNS zone, or null when workload\_key\_vault\_enabled is false. Link a peered VNet to this zone so clients there resolve the vault to its private endpoint. |
 | <a name="output_node_resource_group_name"></a> [node\_resource\_group\_name](#output\_node\_resource\_group\_name) | Name of the auto-generated resource group holding the cluster's node resources. |
 | <a name="output_node_subnet_id"></a> [node\_subnet\_id](#output\_node\_subnet\_id) | Resource ID of the subnet holding the cluster nodes. |
 | <a name="output_oidc_issuer_url"></a> [oidc\_issuer\_url](#output\_oidc\_issuer\_url) | Issuer URL of the cluster's OIDC endpoint. Required as the issuer when creating the federated identity credential that lets a Kubernetes service account authenticate to Entra ID via workload identity. |
 | <a name="output_private_fqdn"></a> [private\_fqdn](#output\_private\_fqdn) | Private FQDN of the API server, served by the AKS-managed private.<region>.azmk8s.io zone. Only resolves from inside the VNet or a network linked to that zone — prefer the fqdn output, which resolves anywhere and points at the same private address. |
+| <a name="output_privatelink_subnet_id"></a> [privatelink\_subnet\_id](#output\_privatelink\_subnet\_id) | Resource ID of the subnet holding private endpoints, or null when workload\_key\_vault\_enabled is false. Use as the subnet for further private endpoints rather than adding another subnet. |
+| <a name="output_resource_group_id"></a> [resource\_group\_id](#output\_resource\_group\_id) | Resource ID of the resource group containing the AKS cluster. Use as the scope when granting a role over everything this module creates. |
 | <a name="output_resource_group_name"></a> [resource\_group\_name](#output\_resource\_group\_name) | Name of the resource group containing the AKS cluster. |
 | <a name="output_virtual_network_id"></a> [virtual\_network\_id](#output\_virtual\_network\_id) | Resource ID of the cluster VNet. Use as the remote side when peering, or as the target of a private DNS zone virtual network link. |
 | <a name="output_virtual_network_name"></a> [virtual\_network\_name](#output\_virtual\_network\_name) | Name of the cluster VNet. |
+| <a name="output_workload_key_vault_id"></a> [workload\_key\_vault\_id](#output\_workload\_key\_vault\_id) | Resource ID of the workload Key Vault, or null when workload\_key\_vault\_enabled is false. Use as the scope when granting a workload identity access outside this module. |
+| <a name="output_workload_key_vault_name"></a> [workload\_key\_vault\_name](#output\_workload\_key\_vault\_name) | Name of the workload Key Vault, or null when workload\_key\_vault\_enabled is false. Derived as "kv-<workload\_name>-<environment>-secrets", against the jump box vault's "-jumpbox". |
+| <a name="output_workload_key_vault_uri"></a> [workload\_key\_vault\_uri](#output\_workload\_key\_vault\_uri) | Data-plane URI of the workload Key Vault, or null when workload\_key\_vault\_enabled is false. Resolves to the private endpoint's address from inside the VNet and to nothing usable from outside it — this is the value a SecretProviderClass takes as its keyvaultName's vault URI. |
 <!-- END_TF_DOCS -->

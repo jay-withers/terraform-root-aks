@@ -4,16 +4,16 @@ module "aks" {
   version = "~> 0.6"
 
   name      = module.naming.kubernetes_cluster.name
-  location  = azurerm_resource_group.this.location
-  parent_id = azurerm_resource_group.this.id
+  location  = module.resource_group.location
+  parent_id = module.resource_group.resource_id
 
   kubernetes_version = var.kubernetes_version
 
   # BYO networking needs an identity that already holds rights on the subnets,
-  # so the system-assigned identity is off. See network.tf.
+  # so the system-assigned identity is off. See main.network.tf.
   managed_identities = {
     system_assigned            = false
-    user_assigned_resource_ids = [azurerm_user_assigned_identity.aks.id]
+    user_assigned_resource_ids = [module.aks_identity.resource_id]
   }
 
   # Private API server and cluster networking. Both are create-time only.
@@ -29,7 +29,7 @@ module "aks" {
     count_of           = var.system_node_count
     availability_zones = var.availability_zones
     node_taints        = ["CriticalAddonsOnly=true:NoSchedule"]
-    vnet_subnet_id     = azurerm_subnet.nodes.id
+    vnet_subnet_id     = module.vnet.subnets["nodes"].resource_id
   }
 
   agent_pools = {
@@ -43,7 +43,7 @@ module "aks" {
       min_count           = var.apps_min_count
       max_count           = var.apps_max_count
       count_of            = var.apps_min_count
-      vnet_subnet_id      = azurerm_subnet.nodes.id
+      vnet_subnet_id      = module.vnet.subnets["nodes"].resource_id
     }
 
     # Isolated for the observability stack. Monitoring workloads must set a
@@ -59,7 +59,7 @@ module "aks" {
       count_of            = var.monitoring_min_count
       node_labels         = { workload = "monitoring" }
       node_taints         = ["workload=monitoring:NoSchedule"]
-      vnet_subnet_id      = azurerm_subnet.nodes.id
+      vnet_subnet_id      = module.vnet.subnets["nodes"].resource_id
     }
   }
 
@@ -114,9 +114,7 @@ module "aks" {
 
   # The subnet IDs above create an implicit dependency on the subnets but not on
   # the role assignments over them, and creation fails if the cluster identity
-  # cannot join the subnets yet.
-  depends_on = [
-    azurerm_role_assignment.aks_nodes_subnet,
-    azurerm_role_assignment.aks_api_server_subnet,
-  ]
+  # cannot join the subnets yet. Those grants are properties of the subnets, so
+  # depending on the whole VNet module is what waits for them.
+  depends_on = [module.vnet]
 }
