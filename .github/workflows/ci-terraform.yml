@@ -20,7 +20,7 @@ jobs:
       terraform: ${{ steps.filter.outputs.terraform }}
     steps:
       - name: Detect Terraform changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
           filters: |
@@ -40,14 +40,14 @@ jobs:
         working-directory: terraform
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Resolve Terraform version
         id: tfversion
         run: echo "version=$(cat "$GITHUB_WORKSPACE/.terraform-version")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ steps.tfversion.outputs.version }}
           terraform_wrapper: false
@@ -78,14 +78,14 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Resolve Terraform version
         id: tfversion
         run: echo "version=$(cat "$GITHUB_WORKSPACE/.terraform-version")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ steps.tfversion.outputs.version }}
           terraform_wrapper: false
