@@ -275,8 +275,8 @@ locals {
   # "kv-main-dev-jumpbox" fails at apply with VaultAlreadyExists if any tenant
   # anywhere claimed it first. A distinctive workload_name is the mitigation. The
   # roles also cost 8 of 24 characters, which is what caps workload_name at 9.
-  jumpbox_key_vault_name  = "${module.naming.key_vault.name}-jumpbox"
-  workload_key_vault_name = "${module.naming.key_vault.name}-secrets"
+  jumpbox_key_vault_name  = "${module.naming.key_vault.name}-jump"
+  workload_key_vault_name = "${module.naming.key_vault.name}-workload"
 
   # Select this secret in the Bastion connection pane, authentication type "SSH
   # Private Key from Azure Key Vault", username "azureuser". Written by Terraform
