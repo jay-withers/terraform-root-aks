@@ -17,8 +17,8 @@ module "nsg_jumpbox" {
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = "${module.naming.network_security_group.name}-jumpbox"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   security_rules      = local.jumpbox_nsg_rules
   tags                = local.tags
 }
@@ -54,8 +54,8 @@ module "jumpbox_key_vault" {
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = local.jumpbox_key_vault_name
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tenant_id           = data.azurerm_client_config.current.tenant_id
   sku_name            = "standard"
   tags                = local.tags
@@ -82,8 +82,8 @@ module "jumpbox" {
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = "${module.naming.linux_virtual_machine.name}-jumpbox"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   os_type             = "Linux"
   sku_size            = var.jumpbox_vm_size
   tags                = local.tags
@@ -126,8 +126,8 @@ module "jumpbox" {
   encryption_at_host_enabled = false
 }
 
-# The Developer SKU is free and needs no AzureBastionSubnet. If var.location does
-# not support it, set bastion_enabled = false. The portal will still offer to
+# The Developer SKU is free and needs no AzureBastionSubnet. If the landing zone's
+# region does not support it, set bastion_enabled = false. The portal will still offer to
 # deploy Bastion Developer on demand when you connect, and an unmanaged resource
 # appearing under a VNet Terraform owns is worse than choosing not to declare it.
 module "bastion" {
@@ -137,8 +137,8 @@ module "bastion" {
   count   = var.jumpbox_enabled && var.bastion_enabled ? 1 : 0
 
   name      = local.bastion_name
-  location  = module.resource_group.location
-  parent_id = module.resource_group.resource_id
+  location  = local.location
+  parent_id = local.resource_group_id
   sku       = local.bastion_sku
   tags      = local.tags
 

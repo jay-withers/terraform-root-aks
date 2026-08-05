@@ -3,29 +3,28 @@
 # here either. This creates the vault and the RBAC grants; the secrets are written
 # from the jump box. Costs a few pounds a month for the endpoint and zone.
 
-# Without this zone the endpoint has an address nothing can resolve: clients would
-# keep resolving the public name to a public IP the vault no longer answers on. A
-# VNet links to only one zone of a given name, so where a hub owns DNS centrally,
-# set workload_key_vault_enabled = false and create the vault against the hub's zone.
-module "key_vault_private_dns_zone" {
-  #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
-  source  = "Azure/avm-res-network-privatednszone/azurerm"
-  version = "~> 0.5"
-  count   = var.workload_key_vault_enabled ? 1 : 0
+# Without a zone the endpoint has an address nothing can resolve: clients would keep
+# resolving the public name to a public IP the vault no longer answers on.
+#
+# The zone itself lives in the hub and is not created here — a VNet links to only one
+# zone of a given name, and the zone outlives any single spoke. This creates only the
+# link, which is a child of the zone and so is written in the hub's resource group.
+# That is what the landingzones component's per-zone Private DNS Zone Contributor
+# grant is for, and why it is scoped to the specific zones this cluster was given
+# rather than to the hub group as a whole.
+#
+# Destroying this cluster removes its link and leaves the zone standing.
+resource "azurerm_private_dns_zone_virtual_network_link" "key_vault" {
+  count = var.workload_key_vault_enabled ? 1 : 0
 
-  domain_name = "privatelink.vaultcore.azure.net"
-  parent_id   = module.resource_group.resource_id
-  tags        = local.tags
+  name                  = "vnetlink-${local.name_suffix}"
+  resource_group_name   = module.hub_naming.resource_group.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.key_vault[0].name
+  virtual_network_id    = module.vnet.resource_id
+  tags                  = local.tags
 
-  virtual_network_links = {
-    cluster_vnet = {
-      name               = "vnetlink-${local.name_suffix}"
-      virtual_network_id = module.vnet.resource_id
-
-      # Records come from the endpoint's DNS zone group; nothing self-registers here.
-      registration_enabled = false
-    }
-  }
+  # Records come from the endpoint's DNS zone group; nothing self-registers here.
+  registration_enabled = false
 }
 
 module "workload_key_vault" {
@@ -35,8 +34,8 @@ module "workload_key_vault" {
   count   = var.workload_key_vault_enabled ? 1 : 0
 
   name                = local.workload_key_vault_name
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tenant_id           = data.azurerm_client_config.current.tenant_id
   sku_name            = "standard"
   tags                = local.tags

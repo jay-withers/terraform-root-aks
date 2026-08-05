@@ -4,6 +4,33 @@
 # both locally (`make test`) and in CI (ci-terraform).
 
 mock_provider "azurerm" {
+  # The landing zone resource group, the hub VNet and the hub's private DNS zone are
+  # looked up, not created (see data.tf). Their IDs are fed to AVM modules that
+  # validate the resource ID format; the provider mock otherwise generates a random
+  # string. Names here are fixed rather than derived — assertions about derived names
+  # use module.naming, which is real.
+  mock_data "azurerm_resource_group" {
+    defaults = {
+      id       = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-aks-dev"
+      name     = "rg-aks-dev"
+      location = "westeurope"
+    }
+  }
+
+  mock_data "azurerm_virtual_network" {
+    defaults = {
+      id   = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-hub-dev/providers/Microsoft.Network/virtualNetworks/vnet-hub-dev"
+      name = "vnet-hub-dev"
+    }
+  }
+
+  mock_data "azurerm_private_dns_zone" {
+    defaults = {
+      id   = "/subscriptions/22222222-2222-2222-2222-222222222222/resourceGroups/rg-hub-dev/providers/Microsoft.Network/privateDnsZones/privatelink.vaultcore.azure.net"
+      name = "privatelink.vaultcore.azure.net"
+    }
+  }
+
   # azurerm_key_vault validates tenant_id as a UUID at plan time; the provider
   # mock otherwise generates a random string.
   mock_data "azurerm_client_config" {
@@ -34,8 +61,8 @@ run "dev_derives_name_and_tag" {
   }
 
   assert {
-    condition     = module.resource_group.name == "rg-main-dev"
-    error_message = "resource group name did not derive from environment"
+    condition     = module.naming.resource_group.name == "rg-aks-dev"
+    error_message = "landing zone resource group name did not derive from environment"
   }
 
   assert {
@@ -52,8 +79,8 @@ run "stg_derives_name" {
   }
 
   assert {
-    condition     = module.resource_group.name == "rg-main-stg"
-    error_message = "resource group name did not derive from environment"
+    condition     = module.naming.resource_group.name == "rg-aks-stg"
+    error_message = "landing zone resource group name did not derive from environment"
   }
 }
 
@@ -65,8 +92,8 @@ run "prd_derives_name" {
   }
 
   assert {
-    condition     = module.resource_group.name == "rg-main-prd"
-    error_message = "resource group name did not derive from environment"
+    condition     = module.naming.resource_group.name == "rg-aks-prd"
+    error_message = "landing zone resource group name did not derive from environment"
   }
 }
 
@@ -79,8 +106,8 @@ run "workload_name_derives_name" {
   }
 
   assert {
-    condition     = module.resource_group.name == "rg-widgets-dev"
-    error_message = "resource group name did not derive from workload_name"
+    condition     = module.naming.resource_group.name == "rg-widgets-dev"
+    error_message = "landing zone resource group name did not derive from workload_name"
   }
 }
 

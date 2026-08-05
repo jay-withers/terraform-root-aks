@@ -27,8 +27,8 @@ module "nsg_nodes" {
   version = "~> 0.5"
 
   name                = "${module.naming.network_security_group.name}-nodes"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tags                = local.tags
 }
 
@@ -38,8 +38,8 @@ module "nsg_api_server" {
   version = "~> 0.5"
 
   name                = "${module.naming.network_security_group.name}-apiserver"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tags                = local.tags
 }
 
@@ -53,8 +53,8 @@ module "nsg_privatelink" {
   count   = local.privatelink_enabled ? 1 : 0
 
   name                = "${module.naming.network_security_group.name}-privatelink"
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tags                = local.tags
 }
 
@@ -64,8 +64,8 @@ module "vnet" {
   version = "~> 0.20"
 
   name          = module.naming.virtual_network.name
-  location      = module.resource_group.location
-  parent_id     = module.resource_group.resource_id
+  location      = local.location
+  parent_id     = local.resource_group_id
   address_space = [var.vnet_address_space]
   subnets       = local.subnets
   tags          = local.tags
@@ -81,7 +81,7 @@ module "aks_identity" {
   version = "~> 0.5"
 
   name                = module.naming.user_assigned_identity.name
-  location            = module.resource_group.location
-  resource_group_name = module.resource_group.name
+  location            = local.location
+  resource_group_name = local.resource_group_name
   tags                = local.tags
 }

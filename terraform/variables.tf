@@ -1,7 +1,7 @@
 variable "workload_name" {
-  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster and resource group names via the Azure naming module. Capped at 9 characters by the Key Vault name length."
+  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster names via the Azure naming module, and to locate the vended landing zone resource group this deploys into — so it must match the landing zone's key in the azure-landingzone repo's landingzones component. Capped at 9 characters by the Key Vault name length."
   type        = string
-  default     = "main"
+  default     = "aks"
 
   validation {
     condition     = length(var.workload_name) <= 9
@@ -20,10 +20,14 @@ variable "environment" {
   }
 }
 
-variable "location" {
-  description = "Azure region to deploy into."
+# No location variable. The region comes from the vended landing zone resource group
+# (see data.tf) — a variable here could only ever disagree with the group the
+# resources actually live in.
+
+variable "hub_workload" {
+  description = "The connectivity component's workload name in the azure-landingzone repo. Used with environment to locate the hub virtual network and the private DNS zones this cluster links to."
   type        = string
-  default     = "westeurope"
+  default     = "hub"
 }
 
 variable "kubernetes_version" {
@@ -106,11 +110,15 @@ variable "availability_zones" {
 # The three ranges below must not overlap each other, the VNet, or anything the
 # VNet is peered with or routed to. AKS rejects overlaps at create time, which
 # is a slow way to find out.
+#
+# This spoke sits at 10.1.0.0/16 because the hub holds 10.0.0.0/22 and Azure refuses
+# to peer virtual networks with overlapping address spaces — the failure is at peering
+# creation, not at plan. Keep spokes out of 10.0.0.0/22 and off each other.
 
 variable "vnet_address_space" {
   description = "Address space of the cluster VNet. Must contain node_subnet_address_prefix and api_server_subnet_address_prefix, and must not overlap pod_cidr, service_cidr, or any peered network."
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.1.0.0/16"
 
   validation {
     condition     = can(cidrhost(var.vnet_address_space, 0))
@@ -121,7 +129,7 @@ variable "vnet_address_space" {
 variable "node_subnet_address_prefix" {
   description = "Address prefix of the subnet holding the cluster nodes. Azure CNI Overlay places pods on pod_cidr rather than on VNet addresses, so this only has to accommodate the node count plus upgrade surge — not the pod count."
   type        = string
-  default     = "10.0.0.0/22"
+  default     = "10.1.0.0/22"
 
   validation {
     condition     = can(cidrhost(var.node_subnet_address_prefix, 0))
@@ -132,7 +140,7 @@ variable "node_subnet_address_prefix" {
 variable "api_server_subnet_address_prefix" {
   description = "Address prefix of the subnet the API server is projected into by VNet integration. Delegated to Microsoft.ContainerService/managedClusters and dedicated to the API server; AKS requires /28 or larger."
   type        = string
-  default     = "10.0.4.0/28"
+  default     = "10.1.4.0/28"
 
   validation {
     condition     = can(cidrhost(var.api_server_subnet_address_prefix, 0))
@@ -170,7 +178,7 @@ variable "service_cidr" {
 variable "privatelink_subnet_address_prefix" {
   description = "Address prefix of the subnet holding private endpoints. Must sit inside vnet_address_space and not overlap the node, API server, or jump box subnets. Inert unless workload_key_vault_enabled is true — nothing else in this module takes a private endpoint yet."
   type        = string
-  default     = "10.0.6.0/28"
+  default     = "10.1.6.0/28"
 
   validation {
     condition     = can(cidrhost(var.privatelink_subnet_address_prefix, 0))
@@ -205,7 +213,7 @@ variable "jumpbox_enabled" {
 variable "jumpbox_subnet_address_prefix" {
   description = "Address prefix of the jump box subnet. Sized for a single VM; must sit inside vnet_address_space and not overlap the node or API server subnets."
   type        = string
-  default     = "10.0.5.0/28"
+  default     = "10.1.5.0/28"
 
   validation {
     condition     = can(cidrhost(var.jumpbox_subnet_address_prefix, 0))
@@ -231,7 +239,7 @@ variable "jumpbox_key_expiry_date" {
 }
 
 variable "bastion_enabled" {
-  description = "Whether to create the Azure Bastion host that fronts the jump box. The Developer SKU is free and needs no dedicated subnet, but is not offered in every region — set this to false where var.location does not support it. Inert unless jumpbox_enabled is true."
+  description = "Whether to create the Azure Bastion host that fronts the jump box. The Developer SKU is free and needs no dedicated subnet, but is not offered in every region — set this to false where the landing zone's region does not support it. Inert unless jumpbox_enabled is true."
   type        = bool
   default     = true
 }

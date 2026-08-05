@@ -1,11 +1,11 @@
 output "resource_group_name" {
   description = "Name of the resource group containing the AKS cluster."
-  value       = module.resource_group.name
+  value       = local.resource_group_name
 }
 
 output "resource_group_id" {
   description = "Resource ID of the resource group containing the AKS cluster. Use as the scope when granting a role over everything this module creates."
-  value       = module.resource_group.resource_id
+  value       = local.resource_group_id
 }
 
 output "cluster_name" {
@@ -89,8 +89,13 @@ output "workload_key_vault_uri" {
 }
 
 output "key_vault_private_dns_zone_id" {
-  description = "Resource ID of the privatelink.vaultcore.azure.net private DNS zone, or null when workload_key_vault_enabled is false. Link a peered VNet to this zone so clients there resolve the vault to its private endpoint."
-  value       = one(module.key_vault_private_dns_zone[*].resource_id)
+  description = "Resource ID of the hub's privatelink.vaultcore.azure.net private DNS zone this cluster links to, or null when workload_key_vault_enabled is false. The zone is owned by the connectivity component, not by this module — other spokes link their own VNets to it the same way."
+  value       = one(data.azurerm_private_dns_zone.key_vault[*].id)
+}
+
+output "hub_vnet_id" {
+  description = "Resource ID of the hub virtual network this cluster is peered to."
+  value       = data.azurerm_virtual_network.hub.id
 }
 
 output "cluster_identity_principal_id" {
