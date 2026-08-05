@@ -75,12 +75,15 @@ module "vnet" {
 # these subnets have to exist before the cluster does, and a system-assigned
 # identity is not created until then. The grants themselves are properties of the
 # subnets — see local.subnets.
+#
+# The role suffix is load-bearing: the landing zone's vended deploy identity already
+# holds the unsuffixed name in this resource group, and this must not become it.
 module "aks_identity" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-managedidentity-userassignedidentity/azurerm"
   version = "~> 0.5"
 
-  name                = module.naming.user_assigned_identity.name
+  name                = "${module.naming.user_assigned_identity.name}-cluster"
   location            = local.location
   resource_group_name = local.resource_group_name
   tags                = local.tags
