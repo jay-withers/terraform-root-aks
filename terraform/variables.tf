@@ -222,9 +222,9 @@ variable "jumpbox_subnet_address_prefix" {
 }
 
 variable "jumpbox_vm_size" {
-  description = "VM size for the jump box. Burstable by default — it spends most of its life idle, and the work it does (kubectl, helm, az) is interactive rather than sustained. Deallocate it when unused; compute stops billing, the disk does not."
+  description = "VM size for the jump box. It spends most of its life idle, so deallocate it when unused — compute stops billing, the disk does not. A burstable B-series would suit the workload better, but the whole B family returns NotAvailableForSubscription on this subscription; this is the cheapest x86 size actually offered."
   type        = string
-  default     = "Standard_B2s_v2"
+  default     = "Standard_D2als_v6"
 }
 
 variable "jumpbox_key_expiry_date" {
