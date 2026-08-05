@@ -1,8 +1,40 @@
-# template-terraform
+# terraform-root-aks
 
-A GitHub repository template for Azure Terraform modules, providing a dev container,
-Terraform pre-commit hooks (fmt, validate, tflint, terraform-docs, checkov),
-CI workflows, and Renovate dependency updates.
+A private AKS cluster — VNet, NSGs, Key Vault, jump box and Flux — deployed as an
+**application landing zone spoke** of the platform in
+[`jay-withers/azure-landingzone`](https://github.com/jay-withers/azure-landingzone).
+
+## This is a spoke: apply the landing zone first
+
+This repo does not stand alone. The landing zone's `landingzones` component vends it a
+resource group and an identity, and its `connectivity` component owns the hub VNet and
+the private DNS zones this cluster links to. In the landing zone repo:
+
+```bash
+make apply C=management
+make apply C=governance
+make apply C=connectivity
+make apply C=landingzones
+```
+
+Only then does `make apply` here have anywhere to deploy. What that means in practice:
+
+| | Owned by | Notes |
+| --- | --- | --- |
+| Resource group | landing zone | Looked up, not created — the group *is* the landing zone, and this cluster's identity cannot create resource groups |
+| Region | landing zone | Taken from the vended group; there is no `location` variable |
+| `privatelink.vaultcore.azure.net` | hub | This creates only its own VNet link, in the hub's resource group |
+| Hub VNet | hub | This creates **both** halves of the peering — one side alone stays Initiated |
+| Address space | this repo | `10.1.0.0/16`, kept clear of the hub's `10.0.0.0/22`; Azure refuses to peer overlapping ranges |
+
+`workload_name` (default `aks`) must match the landing zone's key in the
+`landingzones` component — it derives the resource group name being looked up.
+
+If an apply fails with `AuthorizationFailed`, add a targeted grant in the landing zone
+repo rather than widening this identity's scope. The identity holds `Contributor` on
+its own resource group, `Role Based Access Control Administrator` there (this cluster
+creates its own role assignments), a five-action custom peering role on the hub VNet,
+and `Private DNS Zone Contributor` on the specific zones it was granted.
 
 ## Getting started
 
@@ -40,17 +72,25 @@ credentials. Add `assert` blocks as the module grows.
 
 ## Azure auth for `terraform plan`
 
-The `ci-terraform` **plan** job runs `terraform plan` against
-`terraform/examples/basic/` using GitHub OIDC (no long-lived secrets). It is **skipped until you set the
-`AZURE_CLIENT_ID` repository variable**, so a freshly created repo stays green
-until Azure auth is wired up. To enable it:
+The `ci-terraform` **plan** job runs `terraform plan` against `terraform/` using
+GitHub OIDC (no long-lived secrets), once per environment. It is **skipped until you
+set the `AZURE_CLIENT_ID` repository variable**, so the repo stays green until Azure
+auth is wired up.
 
-1. Create an Azure app registration / managed identity and add a **federated
-   credential** trusting this repository's GitHub Actions.
-2. Grant it the roles it needs on the target subscription.
-3. Add three **repository variables** (Settings → Secrets and variables →
-   Actions → Variables): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
-   `AZURE_SUBSCRIPTION_ID`.
+You do not create the identity yourself — the landing zone repo's `landingzones`
+component vends it, already federated to this repository and scoped to this cluster's
+resource group. To enable the plan job:
+
+1. In the landing zone repo, run `terraform output github_secrets` after applying
+   `landingzones`.
+2. Add the three values it prints as **repository variables** here (Settings → Secrets
+   and variables → Actions → Variables): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+   `AZURE_SUBSCRIPTION_ID`. None are secret — a client ID is useless without a
+   matching federated credential.
+
+Note the plan only succeeds once the landing zone is applied: the resource group, hub
+VNet and private DNS zone are all looked up, and a data source for something that does
+not exist yet fails at plan time.
 
 ## Branch protection
 
