@@ -55,6 +55,40 @@ repos:
       - id: shellcheck
         args: [--external-sources]
 
+  - repo: local
+    hooks:
+      - id: check-tf-file-layout
+        name: Check locals/variables/outputs file layout
+        description: Fails if a `locals`/`variable`/`output` block isn't in a matching locals*.tf/variables*.tf/outputs*.tf file.
+        entry: scripts/check-tf-file-layout.sh
+        language: script
+        pass_filenames: false
+        files: \.tf$
+
+      # Replace TFLint/Checkov's upstream hooks entirely rather than adding a
+      # fixed entry per environment: these discover terraform/environments/*.tfvars
+      # at runtime, so a new environment's tfvars is covered automatically —
+      # no pre-commit config change needed — and rules that depend on concrete
+      # variable values (naming, tags, region-specific checks) are evaluated
+      # against what each environment actually deploys, not unresolved variables.
+      - id: tflint-per-env
+        name: TFLint (per environment)
+        description: Runs tflint against terraform/ once per terraform/environments/*.tfvars file.
+        entry: scripts/tflint-per-env.sh
+        language: script
+        pass_filenames: false
+        files: \.(tf|tfvars)$
+        exclude: \.terraform/.*$
+
+      - id: checkov-per-env
+        name: Checkov (per environment)
+        description: Runs checkov against terraform/ once per terraform/environments/*.tfvars file.
+        entry: scripts/checkov-per-env.sh
+        language: script
+        pass_filenames: false
+        files: \.(tf|tfvars)$
+        exclude: \.terraform/.*$
+
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: 05fd71a57a467ccf5598f7e836d3af4cf9225abb # frozen: v1.108.0
     hooks:
@@ -62,17 +96,8 @@ repos:
 
       - id: terraform_validate
 
-      - id: terraform_tflint
-        args:
-          - --args=--config=__GIT_WORKING_DIR__/terraform/.tflint.hcl
-
       - id: terraform_docs
         args:
           - --hook-config=--path-to-file=README.md
           - --hook-config=--add-to-existing-file=true
           - --hook-config=--create-file-if-not-exist=true
-
-      - id: terraform_checkov
-        args:
-          - --args=--quiet
-          - --args=--compact

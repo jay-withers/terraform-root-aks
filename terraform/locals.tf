@@ -4,6 +4,12 @@ locals {
     managed-by  = "terraform"
   })
 
+  # The vended landing zone — looked up, not created (see data.tf). Everything here
+  # deploys into it, and takes its region from it.
+  resource_group_name = data.azurerm_resource_group.landing_zone.name
+  resource_group_id   = data.azurerm_resource_group.landing_zone.id
+  location            = data.azurerm_resource_group.landing_zone.location
+
   # Every name the Azure naming module produces ends in this — rg-main-dev,
   # aks-main-dev, vnet-main-dev.
   #
@@ -269,8 +275,8 @@ locals {
   # "kv-main-dev-jumpbox" fails at apply with VaultAlreadyExists if any tenant
   # anywhere claimed it first. A distinctive workload_name is the mitigation. The
   # roles also cost 8 of 24 characters, which is what caps workload_name at 9.
-  jumpbox_key_vault_name  = "${module.naming.key_vault.name}-jumpbox"
-  workload_key_vault_name = "${module.naming.key_vault.name}-secrets"
+  jumpbox_key_vault_name  = "${module.naming.key_vault.name}-jump"
+  workload_key_vault_name = "${module.naming.key_vault.name}-workload"
 
   # Select this secret in the Bastion connection pane, authentication type "SSH
   # Private Key from Azure Key Vault", username "azureuser". Written by Terraform
@@ -329,7 +335,8 @@ locals {
       subnet_resource_id = local.privatelink_subnet_id
 
       # Creates the A record in privatelink.vaultcore.azure.net and keeps it in step.
-      private_dns_zone_resource_ids = module.key_vault_private_dns_zone[*].resource_id
+      # The zone is the hub's; this cluster only links its VNet to it.
+      private_dns_zone_resource_ids = data.azurerm_private_dns_zone.key_vault[*].id
     }
   }
 

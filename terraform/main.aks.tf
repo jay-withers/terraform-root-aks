@@ -4,8 +4,8 @@ module "aks" {
   version = "~> 0.6"
 
   name      = module.naming.kubernetes_cluster.name
-  location  = module.resource_group.location
-  parent_id = module.resource_group.resource_id
+  location  = local.location
+  parent_id = local.resource_group_id
 
   kubernetes_version = var.kubernetes_version
 

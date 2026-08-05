@@ -9,8 +9,10 @@
 crash.log
 crash.*.log
 
-# Note: *.tfvars are intentionally NOT ignored — they hold environment config,
-# not secrets. Secrets belong in a secret store / env vars / CI, never in tfvars.
+# *.tfvars files are committed intentionally (dev/stg/prd environment inputs —
+# see terraform/environments/*.tfvars). Do not put secrets in them; use Azure
+# Key Vault, GitHub Actions secrets, or ARM_* environment variables instead.
+# gitleaks (pre-commit and CI) scans every commit as a backstop.
 
 # CLI configuration and override files
 .terraformrc
@@ -20,9 +22,10 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
-# Provider lock file — not committed for a reusable module (consumers generate
-# their own); commit it instead if you repurpose this repo as a root config.
-.terraform.lock.hcl
+# Provider lock file IS committed here. template-terraform-root excludes it because
+# it is a reusable module whose consumers generate their own; terraform/ in this repo
+# is a root config that is applied directly, so the lock is ours to pin — which is
+# what the template's own note says to do when repurposing it as a root config.
 
 # Saved plan output
 *.tfplan
