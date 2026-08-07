@@ -132,8 +132,8 @@ run "role_named_resources_carry_workload_and_environment" {
       module.nsg_privatelink[0].name == "nsg-widgets-stg-privatelink",
       local.jumpbox_network_interfaces["internal"].name == "nic-widgets-stg-jumpbox",
       module.jumpbox[0].name == "vm-widgets-stg-jumpbox",
-      local.jumpbox_key_vault_name == "kv-widgets-stg-jumpbox",
-      local.workload_key_vault_name == "kv-widgets-stg-secrets",
+      local.jumpbox_key_vault_name == "kv-widgets-stg-jump",
+      local.workload_key_vault_name == "kv-widgets-stg-workload",
     ])
     error_message = "role-named resources must be <naming module name>-<role>, e.g. nsg-widgets-stg-nodes — the role goes last so the workload/environment prefix matches every other resource"
   }
@@ -163,33 +163,34 @@ run "role_named_resources_carry_workload_and_environment" {
 run "key_vault_names_fit_at_the_workload_name_limit" {
   command = plan
 
-  # Nine characters is the cap, and this is why: both vault names land on exactly 24,
-  # Key Vault's limit. Past that the naming module truncates rather than failing, and
-  # a truncated global DNS label is both unreadable and likelier to collide.
+  # Eight characters is the cap, and this is why: the workload vault's name — the
+  # longer of the two, at a 9-character role — lands on exactly 24, Key Vault's
+  # limit. Past that the naming module truncates rather than failing, and a
+  # truncated global DNS label is both unreadable and likelier to collide.
   variables {
-    workload_name = "platforms"
+    workload_name = "platform"
     environment   = "prd"
   }
 
   assert {
     condition = alltrue([
-      local.jumpbox_key_vault_name == "kv-platforms-prd-jumpbox",
-      local.workload_key_vault_name == "kv-platforms-prd-secrets",
-      length(local.jumpbox_key_vault_name) == 24,
+      local.jumpbox_key_vault_name == "kv-platform-prd-jump",
+      local.workload_key_vault_name == "kv-platform-prd-workload",
       length(local.workload_key_vault_name) == 24,
+      length(local.jumpbox_key_vault_name) <= 24,
     ])
-    error_message = "at the workload_name cap both Key Vault names must land on exactly 24 characters — if they do not, the cap and the names have drifted apart"
+    error_message = "at the workload_name cap the workload Key Vault name must land on exactly 24 characters — if it does not, the cap and the names have drifted apart"
   }
 }
 
 run "rejects_a_workload_name_the_key_vault_cannot_hold" {
   command = plan
 
-  # Ten characters — one past the cap. The naming module would truncate rather than
+  # Nine characters — one past the cap. The naming module would truncate rather than
   # fail, eating into the random component of the workload vault's name, so this has
   # to be caught here: silently, the vault name becomes a collision risk.
   variables {
-    workload_name = "platformsv"
+    workload_name = "platforms"
   }
 
   expect_failures = [var.workload_name]

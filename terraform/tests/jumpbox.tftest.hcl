@@ -54,7 +54,7 @@ mock_provider "azapi" {
     }
   }
 }
-mock_provider "tls" {}
+mock_provider "random" {}
 
 run "jumpbox_has_no_public_ip" {
   command = plan
@@ -74,7 +74,7 @@ run "jumpbox_has_no_public_ip" {
   }
 }
 
-run "jumpbox_does_not_accept_ssh_from_the_internet" {
+run "jumpbox_does_not_accept_rdp_from_the_internet" {
   command = plan
 
   assert {
@@ -85,21 +85,43 @@ run "jumpbox_does_not_accept_ssh_from_the_internet" {
     ])
     error_message = "no inbound allow rule on the jump box may accept traffic from the internet"
   }
+
+  # RDP is what Bastion Developer speaks to a Windows VM — cross-protocol
+  # connections are a Standard SKU feature. An NSG still allowing only 22 would
+  # leave the box unreachable through the one route it has.
+  assert {
+    condition = anytrue([
+      for rule in local.jumpbox_nsg_rules :
+      rule.destination_port_range == "3389"
+      if rule.direction == "Inbound" && rule.access == "Allow"
+    ])
+    error_message = "Bastion reaches a Windows jump box over RDP, so 3389 must be allowed inbound from the VNet"
+  }
 }
 
-run "passwords_are_disabled" {
+run "sign_in_password_is_generated_not_chosen" {
   command = plan
 
+  # Pinned because it is counter-intuitive and easy to "fix" wrongly: the flag is
+  # Linux-only, Windows always has password authentication, and the AVM module
+  # rejects the plan if it is set false alongside os_type "Windows".
   assert {
     condition     = local.jumpbox_account_credentials.password_authentication_disabled
-    error_message = "password authentication must stay off; Entra ID is the login path"
+    error_message = "password_authentication_disabled is a Linux-only flag and must stay true on Windows, whatever the VM actually does"
   }
 
-  # The module's own generated key is vaulted with an expiry that cannot be omitted.
-  # See local.jumpbox_account_credentials.
+  # The module's own generated password is vaulted with an expiry that cannot be
+  # omitted. See local.jumpbox_account_credentials.
   assert {
     condition     = !local.jumpbox_account_credentials.admin_credentials.generate_admin_password_or_ssh_key
-    error_message = "the sign-in key must be the one this module generates, so its Key Vault secret can be written without a forced expiry"
+    error_message = "the sign-in password must be the one this module generates, so its Key Vault secret can be written without a forced expiry"
+  }
+
+  # Long enough that the password being the only sign-in path is not the weakness
+  # it would otherwise be, and complex enough that Windows accepts it outright.
+  assert {
+    condition     = random_password.jumpbox_admin[0].length >= 24
+    error_message = "the jump box password is the only credential into a private cluster; it must be generated long"
   }
 }
 
@@ -107,10 +129,10 @@ run "entra_id_login_is_installed" {
   command = plan
 
   # Dormant on the Developer SKU, which cannot do Entra ID auth — kept so that
-  # upgrading Bastion to Basic retires the Key Vault key immediately.
+  # upgrading Bastion to Basic retires the Key Vault password immediately.
   assert {
-    condition     = local.jumpbox_extensions["entra_login"].type == "AADSSHLoginForLinux"
-    error_message = "the Entra ID SSH login extension must stay installed, so a Bastion SKU upgrade is all that is needed to drop the shared key"
+    condition     = local.jumpbox_extensions["entra_login"].type == "AADLoginForWindows"
+    error_message = "the Entra ID login extension must stay installed, so a Bastion SKU upgrade is all that is needed to drop the shared password"
   }
 
   assert {
@@ -119,29 +141,64 @@ run "entra_id_login_is_installed" {
   }
 }
 
-run "sign_in_key_is_reachable_and_rsa" {
+run "bootstrap_installs_the_tools_the_cluster_needs" {
   command = plan
 
-  # The Developer SKU cannot authenticate with Entra ID, so this key is the only
-  # way in. If it is not in the vault, the jump box is unreachable.
+  # Windows never executes custom_data, so the tooling install is an extension.
+  # kubelogin is the load-bearing one: local accounts are disabled and Azure RBAC
+  # is on, so kubectl cannot authenticate to this cluster without it.
   assert {
-    condition     = local.jumpbox_key_vault_secrets["ssh_private_key"].name == "jumpbox-ssh-private-key"
-    error_message = "the sign-in key must be stored in Key Vault; Bastion Developer has no other usable authentication method here"
+    condition     = strcontains(local.jumpbox_bootstrap_script, "kubelogin.exe")
+    error_message = "the bootstrap must install kubelogin — with disable_local_accounts, kubectl cannot reach this cluster without it"
   }
 
-  # The portal documents the private key as needing "-----BEGIN RSA PRIVATE
-  # KEY-----" form, which ED25519 cannot produce.
+  # Downloaded straight from dl.k8s.io rather than via "az aks install-cli", the
+  # obvious route, which does not work on this image: it fetches through
+  # azure-cli's bundled Python certificate store and fails TLS verification.
   assert {
-    condition     = tls_private_key.jumpbox_admin[0].algorithm == "RSA"
-    error_message = "the sign-in key must be RSA — Bastion's Key Vault flow expects an RSA-format PEM"
+    condition     = strcontains(local.jumpbox_bootstrap_script, "dl.k8s.io/release")
+    error_message = "kubectl must come straight from dl.k8s.io; az aks install-cli fails TLS verification against it on this image"
+  }
+
+  assert {
+    condition     = local.jumpbox_extensions["bootstrap"].type == "CustomScriptExtension"
+    error_message = "the tooling install must run as an extension; Windows writes custom_data to disk and never runs it"
+  }
+}
+
+run "sign_in_password_is_reachable" {
+  command = plan
+
+  # The Developer SKU cannot authenticate with Entra ID, so this password is the
+  # only way in. If it is not in the vault, the jump box is unreachable.
+  assert {
+    condition     = local.jumpbox_key_vault_secrets["admin_password"].name == "jumpbox-admin-password"
+    error_message = "the sign-in password must be stored in Key Vault; Bastion Developer has no other usable authentication method here"
   }
 
   # Key Vault refuses to serve an expired secret, and this one opens the only door
-  # into the cluster. Opt in via var.jumpbox_key_expiry_date once a rotation process
-  # exists to meet the date.
+  # into the cluster. Opt in via var.jumpbox_secret_expiry_date once a rotation
+  # process exists to meet the date.
   assert {
-    condition     = local.jumpbox_key_vault_secrets["ssh_private_key"].expiration_date == null
-    error_message = "the sign-in key secret must not expire by default — an unwatched expiry locks everyone out of a private cluster"
+    condition     = local.jumpbox_key_vault_secrets["admin_password"].expiration_date == null
+    error_message = "the sign-in password secret must not expire by default — an unwatched expiry locks everyone out of a private cluster"
+  }
+}
+
+run "computer_name_fits_the_windows_limit" {
+  command = plan
+
+  variables {
+    workload_name = "platform"
+    environment   = "prd"
+  }
+
+  # Windows rejects a computer name over 15 characters rather than truncating it,
+  # and the failure is at create. The role-suffixed resource name is longer than
+  # that at every workload_name, so the two must stay separate values.
+  assert {
+    condition     = length(local.jumpbox_computer_name) <= 15
+    error_message = "the Windows computer name must be 15 characters or fewer at the workload_name cap"
   }
 }
 
@@ -156,6 +213,77 @@ run "key_vault_is_rbac_governed" {
     condition     = local.jumpbox_key_vault_role_assignments["deployer"].role_definition_id_or_name == "Key Vault Secrets Officer"
     error_message = "Terraform needs data-plane rights to write the key; Owner does not grant them in RBAC mode"
   }
+}
+
+run "key_vault_is_open_by_default" {
+  command = plan
+
+  # null, not a Deny with an empty rule set. The AVM module's own default is a
+  # default-deny firewall, so anything other than null here would lock out the
+  # deploying identity that has to write the password over the data plane — on the
+  # very first apply, before anyone could correct it.
+  assert {
+    condition     = local.jumpbox_key_vault_network_acls == null
+    error_message = "with no allowed IP ranges the vault must carry no firewall at all; a default-deny would shut out Terraform itself"
+  }
+
+  # The public endpoint itself is a literal in main.jumpbox.tf rather than a local,
+  # and the vault resource lives inside the AVM module where a run block cannot
+  # reach it — so there is nothing here to assert it against. It has to stay on:
+  # this vault has no private endpoint, so disabling it denies the operator the
+  # password too. The allow list is what narrows access, not the endpoint switch.
+  assert {
+    condition     = length(module.jumpbox_key_vault) == 1
+    error_message = "the jump box vault must exist for the allow list to have anything to govern"
+  }
+}
+
+run "allowed_ip_ranges_switch_the_vault_to_default_deny" {
+  command = plan
+
+  variables {
+    jumpbox_key_vault_allowed_ip_ranges = ["203.0.113.4", "198.51.100.0/24"]
+  }
+
+  assert {
+    condition     = local.jumpbox_key_vault_network_acls.default_action == "Deny"
+    error_message = "setting an allow list must flip the vault to default-deny; otherwise the list admits nobody extra and excludes nobody"
+  }
+
+  # "AzureServices" would readmit every Microsoft-operated service to a vault whose
+  # point is now a short list of known addresses.
+  assert {
+    condition     = local.jumpbox_key_vault_network_acls.bypass == "None"
+    error_message = "the trusted-services bypass must stay off; it would undo the allow list for a large set of callers"
+  }
+
+  assert {
+    condition     = local.jumpbox_key_vault_network_acls.ip_rules == tolist(["203.0.113.4", "198.51.100.0/24"])
+    error_message = "the configured ranges must reach the vault firewall unmodified"
+  }
+}
+
+run "rejects_private_ip_ranges_the_vault_firewall_cannot_hold" {
+  command = plan
+
+  # Azure rejects RFC1918 ranges in Key Vault IP rules. Caught here because the
+  # failure otherwise arrives at apply, against a vault that may already exist.
+  variables {
+    jumpbox_key_vault_allowed_ip_ranges = ["10.1.5.0/28"]
+  }
+
+  expect_failures = [var.jumpbox_key_vault_allowed_ip_ranges]
+}
+
+run "rejects_an_ip_range_that_is_not_ipv4" {
+  command = plan
+
+  # Key Vault IP rules are IPv4-only.
+  variables {
+    jumpbox_key_vault_allowed_ip_ranges = ["2001:db8::/32"]
+  }
+
+  expect_failures = [var.jumpbox_key_vault_allowed_ip_ranges]
 }
 
 run "bastion_uses_the_free_developer_sku" {

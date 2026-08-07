@@ -64,13 +64,13 @@ output "jumpbox_private_ip" {
 }
 
 output "jumpbox_key_vault_name" {
-  description = "Name of the Key Vault holding the jump box SSH private key, or null when jumpbox_enabled is false. Select this vault in the Bastion connection pane."
+  description = "Name of the Key Vault holding the jump box administrator password, or null when jumpbox_enabled is false. Reading it needs \"Key Vault Secrets User\" here — Bastion's Key Vault sign-in flow is SSH-key only, so for RDP the operator fetches the credential, not Bastion."
   value       = one(module.jumpbox_key_vault[*].name)
 }
 
-output "jumpbox_ssh_secret_name" {
-  description = "Name of the Key Vault secret holding the jump box SSH private key. Connect with authentication type \"SSH Private Key from Azure Key Vault\" and username \"azureuser\"."
-  value       = local.jumpbox_key_vault_secrets["ssh_private_key"].name
+output "jumpbox_password_secret_name" {
+  description = "Name of the Key Vault secret holding the jump box administrator password. Connect over Bastion with authentication type \"Password\" and username \"azureuser\", pasting the value of this secret."
+  value       = local.jumpbox_key_vault_secrets["admin_password"].name
 }
 
 output "workload_key_vault_id" {
@@ -79,7 +79,7 @@ output "workload_key_vault_id" {
 }
 
 output "workload_key_vault_name" {
-  description = "Name of the workload Key Vault, or null when workload_key_vault_enabled is false. Derived as \"kv-<workload_name>-<environment>-secrets\", against the jump box vault's \"-jumpbox\"."
+  description = "Name of the workload Key Vault, or null when workload_key_vault_enabled is false. Derived as \"kv-<workload_name>-<environment>-workload\", against the jump box vault's \"-jump\". The longer of the two, and so the one that caps workload_name at 8 characters."
   value       = one(module.workload_key_vault[*].name)
 }
 
