@@ -12,11 +12,12 @@ terraform {
       source  = "Azure/azapi"
       version = "~> 2.0"
     }
-    # Generates the throwaway admin key the Azure VM API insists on; see
-    # jumpbox.tf. Entra ID is the actual login path.
-    tls = {
-      source  = "hashicorp/tls"
-      version = "~> 4.0"
+    # Generates the jump box's local administrator password; see main.jumpbox.tf.
+    # Windows has no SSH-key equivalent, and Bastion Developer cannot do Entra ID,
+    # so a password is the only sign-in path the free SKU leaves open.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }

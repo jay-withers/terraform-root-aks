@@ -1,11 +1,11 @@
 variable "workload_name" {
-  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster names via the Azure naming module, and to locate the vended landing zone resource group this deploys into — so it must match the landing zone's key in the azure-landingzone repo's landingzones component. Capped at 9 characters by the Key Vault name length."
+  description = "Name of the workload this cluster serves. Combined with environment to derive the CAF-compliant cluster names via the Azure naming module, and to locate the vended landing zone resource group this deploys into — so it must match the landing zone's key in the azure-landingzone repo's landingzones component. Capped at 8 characters by the Key Vault name length."
   type        = string
   default     = "aks"
 
   validation {
-    condition     = length(var.workload_name) <= 9
-    error_message = "workload_name must be 9 characters or fewer. Key Vault names are capped at 24, and this module builds two — \"kv-<workload_name>-<environment>-jumpbox\" and \"-secrets\" — which reach exactly 24 at 9 characters. Past that the name is truncated, and since a vault name is a global DNS label, a truncated one is both unreadable and more likely to collide with a vault already claimed in another tenant."
+    condition     = length(var.workload_name) <= 8
+    error_message = "workload_name must be 8 characters or fewer. Key Vault names are capped at 24, and this module builds two — \"kv-<workload_name>-<environment>-jump\" and \"-workload\" — the longer of which reaches exactly 24 at 8 characters. Past that the name is truncated, and since a vault name is a global DNS label, a truncated one is both unreadable and more likely to collide with a vault already claimed in another tenant."
   }
 }
 
@@ -222,19 +222,41 @@ variable "jumpbox_subnet_address_prefix" {
 }
 
 variable "jumpbox_vm_size" {
-  description = "VM size for the jump box. It spends most of its life idle, so deallocate it when unused — compute stops billing, the disk does not. A burstable B-series would suit the workload better, but the whole B family returns NotAvailableForSubscription on this subscription; this is the cheapest x86 size actually offered."
+  description = "VM size for the jump box. It spends most of its life idle, so deallocate it when unused — compute stops billing, the disk does not, and the Windows Server licence is charged per vCPU for every hour it runs. A burstable B-series would suit the workload better, but the whole B family returns NotAvailableForSubscription on this subscription. Two vCPUs is the floor for a licence charge; the memory-fuller D2as_v6 over the cheaper D2als_v6 because a desktop running Edge in the 4 GiB the \"als\" sizes carry is unusable. Must be a Generation 2 size — the image is Gen2-only."
   type        = string
-  default     = "Standard_D2als_v6"
+  default     = "Standard_D2as_v6"
 }
 
-variable "jumpbox_key_expiry_date" {
-  description = "Optional RFC3339 expiry for the jump box SSH key secret, e.g. \"2027-01-01T00:00:00Z\". Null by default: Key Vault refuses to serve an expired secret, so a date nobody is watching locks everyone out of the only route into the cluster. Set it once a rotation process exists to meet it — rotation is a replace of tls_private_key.jumpbox_admin, not a re-apply."
+variable "jumpbox_secret_expiry_date" {
+  description = "Optional RFC3339 expiry for the jump box administrator password secret, e.g. \"2027-01-01T00:00:00Z\". Null by default: Key Vault refuses to serve an expired secret, so a date nobody is watching locks everyone out of the only route into the cluster. Note that an expiry here lapses the copy in the vault, not the password on the VM — the two only stay in step if the date is met by a rotation, which is a replace of random_password.jumpbox_admin, not a re-apply."
   type        = string
   default     = null
 
   validation {
-    condition     = var.jumpbox_key_expiry_date == null || can(formatdate("YYYY-MM-DD", var.jumpbox_key_expiry_date))
-    error_message = "jumpbox_key_expiry_date must be an RFC3339 timestamp, e.g. \"2027-01-01T00:00:00Z\"."
+    condition     = var.jumpbox_secret_expiry_date == null || can(formatdate("YYYY-MM-DD", var.jumpbox_secret_expiry_date))
+    error_message = "jumpbox_secret_expiry_date must be an RFC3339 timestamp, e.g. \"2027-01-01T00:00:00Z\"."
+  }
+}
+
+variable "jumpbox_key_vault_allowed_ip_ranges" {
+  description = "Public IPv4 addresses or CIDR ranges allowed to reach the jump box Key Vault's data plane, on top of RBAC. Empty by default, which leaves the vault reachable from anywhere and RBAC as the only guard — the behaviour before this variable existed. Setting it switches the vault to default-deny. Whoever runs Terraform must be in this list: the secret is written over the data plane, so an apply from an address that is not listed fails with a 403 Forbidden, and a GitHub-hosted runner's egress address is not stable enough to list. Azure rejects RFC1918 ranges and IPv6 here, and the firewall governs the data plane only — the vault's own configuration stays reachable through ARM, so locking yourself out is recoverable by clearing this and re-applying."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for range in var.jumpbox_key_vault_allowed_ip_ranges :
+      can(regex("^(\\d{1,3}\\.){3}\\d{1,3}(/(3[0-2]|[12]?\\d))?$", range))
+    ])
+    error_message = "each entry must be an IPv4 address or CIDR range, e.g. \"203.0.113.4\" or \"203.0.113.0/24\". Key Vault supports IPv4 only."
+  }
+
+  validation {
+    condition = alltrue([
+      for range in var.jumpbox_key_vault_allowed_ip_ranges :
+      !can(regex("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.)", range))
+    ])
+    error_message = "Key Vault IP rules accept public addresses only — Azure rejects the RFC1918 private ranges (10.x, 172.16-31.x, 192.168.x). To admit traffic from inside the VNet, use a service endpoint or private endpoint rather than an IP rule."
   }
 }
 

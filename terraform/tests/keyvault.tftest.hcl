@@ -51,7 +51,7 @@ mock_provider "azapi" {
     }
   }
 }
-mock_provider "tls" {}
+mock_provider "random" {}
 
 run "workload_vault_has_no_public_endpoint" {
   command = plan

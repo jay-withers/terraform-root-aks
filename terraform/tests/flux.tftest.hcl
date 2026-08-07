@@ -51,7 +51,7 @@ mock_provider "azapi" {
     }
   }
 }
-mock_provider "tls" {}
+mock_provider "random" {}
 
 run "extension_is_installed_by_default" {
   command = plan
