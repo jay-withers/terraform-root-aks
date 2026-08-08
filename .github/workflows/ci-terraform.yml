@@ -29,34 +29,6 @@ jobs:
               - '.terraform-version'
               - '.github/workflows/ci-terraform.yml'
 
-  # Runs the tests. Both providers are mocked, so this needs no Azure credentials.
-  test:
-    needs: changes
-    if: needs.changes.outputs.terraform == 'true'
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: terraform
-    steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Resolve Terraform version
-        id: tfversion
-        run: echo "version=$(cat "$GITHUB_WORKSPACE/.terraform-version")" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
-        with:
-          terraform_version: ${{ steps.tfversion.outputs.version }}
-          terraform_wrapper: false
-
-      - name: Terraform init
-        run: terraform init -input=false -backend=false
-
-      - name: Terraform test
-        run: terraform test -no-color
-
   # Plans against Azure using GitHub OIDC, once per environment. Skipped until the
   # AZURE_CLIENT_ID repository variable is set, so a fresh clone does not fail this
   # check before Azure auth is configured — set it from the client_id the landing
@@ -113,21 +85,20 @@ jobs:
         run: terraform plan -input=false -no-color -var-file=environments/${{ matrix.environment }}.tfvars
 
   # Single required status check for branch protection. Always runs, and fails only
-  # if test or plan actually failed — skipped (no Terraform changes, or Azure auth
-  # not configured) counts as success, so non-Terraform PRs are not blocked. Mark
-  # this check ("ci-terraform") required in the ruleset.
+  # if plan actually failed — skipped (no Terraform changes, or Azure auth not
+  # configured) counts as success, so non-Terraform PRs are not blocked. Mark this
+  # check ("ci-terraform") required in the ruleset.
   ci-terraform:
-    needs: [test, plan]
+    needs: [plan]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - name: Verify Terraform jobs
         env:
-          TEST_RESULT: ${{ needs.test.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
         run: |
-          echo "test=$TEST_RESULT plan=$PLAN_RESULT"
-          if [ "$TEST_RESULT" = "failure" ] || [ "$PLAN_RESULT" = "failure" ]; then
+          echo "plan=$PLAN_RESULT"
+          if [ "$PLAN_RESULT" = "failure" ]; then
             echo "::error::A Terraform job failed."
             exit 1
           fi

@@ -1,0 +1,13 @@
+# Development cluster. terraform/locals.tf derives the bootstrap Kustomization's
+# path from var.environment, so this directory's name is load-bearing: renaming it
+# points the cluster at a path that does not exist, which ARM accepts and Flux then
+# reports NotReady inside a cluster with no public API server.
+#
+# Identical to base today. It exists as a seam — per-cluster divergence (a shorter
+# reconcile interval, a component only dev runs) belongs here as a patch, never as
+# an edit to base that the other two clusters then inherit by accident.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base

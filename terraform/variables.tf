@@ -201,6 +201,39 @@ variable "workload_key_vault_secrets_users" {
   default     = []
 }
 
+# --- tenant workload identities ---------------------------------------------
+# One user-assigned identity per tenant workload, federated to the Kubernetes
+# service account it runs as. See main.tenants.tf.
+
+variable "workload_identities" {
+  description = "Tenant workloads that authenticate to Azure with workload identity, keyed by tenant name. Each entry creates a user-assigned identity named \"id-<workload_name>-<environment>-<key>\" and a federated identity credential binding it to \"system:serviceaccount:<namespace>:<service_account>\" on this cluster's OIDC issuer, and — unless key_vault_secrets_user is false — grants it \"Key Vault Secrets User\" on the workload Key Vault. Empty by default: no tenant, no identity, no grant, which is what keeps the private vault's grant list short. The namespace and service account must match the manifests in gitops/ exactly. A mismatch is neither a plan nor an apply failure; it is an AADSTS70021 \"no matching federated identity record found\" the first time the pod asks Entra ID for a token."
+  type = map(object({
+    namespace              = string
+    service_account        = string
+    key_vault_secrets_user = optional(bool, true)
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for key in keys(var.workload_identities) :
+      can(regex("^[a-z0-9]([-a-z0-9]{0,22}[a-z0-9])?$", key))
+    ])
+    error_message = "each workload_identities key must be a lowercase DNS label of 24 characters or fewer — the key becomes both the suffix of a user-assigned identity name and, uppercased, a Flux post-build substitution variable, and neither tolerates other characters."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for identity in values(var.workload_identities) : [
+        can(regex("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$", identity.namespace)),
+        can(regex("^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$", identity.service_account)),
+      ]
+    ]))
+    error_message = "workload_identities namespace and service_account must each be a lowercase RFC1123 DNS label — they are written verbatim into a federated credential subject of the form \"system:serviceaccount:<namespace>:<service_account>\", which Entra ID matches by exact string and never normalises."
+  }
+}
+
 # --- jump box ---------------------------------------------------------------
 # The administrative path into the private cluster. See main.jumpbox.tf.
 
@@ -376,7 +409,7 @@ variable "flux_git_branch" {
 }
 
 variable "flux_git_path" {
-  description = "Path inside the repository the cluster's Kustomization builds from, e.g. \"clusters/dev\". Null by default, which builds from the repository root — set it for the common layout where one repository serves several clusters. Flux fails to reconcile if the path does not exist."
+  description = "Path inside flux_git_repository_url the cluster's bootstrap Kustomization builds from. Null by default, which derives \"gitops/clusters/<environment>\" — the layout this repository carries, where one repository serves all three clusters. Set it only when pointing flux_git_repository_url at a repository with a different tree. A path that does not exist is neither a plan nor an apply failure: ARM accepts it and the Kustomization then reports NotReady inside a cluster with no public API server."
   type        = string
   default     = null
 }

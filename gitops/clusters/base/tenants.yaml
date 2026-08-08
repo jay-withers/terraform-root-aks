@@ -1,0 +1,36 @@
+# Tenant onboarding — the platform-owned half of every tenant.
+#
+# This Kustomization runs in flux-system with the cluster-scoped reconciler, which
+# is what lets it create namespaces, service accounts and RoleBindings. What it
+# creates for each tenant is a namespace the tenant is confined to, a service
+# account with rights only inside it, and a Kustomization that reconciles the
+# tenant's own manifests *as that service account*. The tenant never gets to write
+# any of those objects, which is the whole of the isolation.
+#
+# It waits on infra-configs because a tenant's HTTPRoute has nothing to attach to
+# until the Gateway exists, and its pods have nothing to mount until the Key Vault
+# CSI wiring does.
+#
+# The path carries ${CLUSTER_ENVIRONMENT} rather than being repeated per cluster:
+# this file is shared by all three, and Terraform substitutes the value in.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tenants
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-configs
+  interval: 10m
+  retryInterval: 1m
+  timeout: 10m
+  path: ./gitops/tenants/onboarding/${CLUSTER_ENVIRONMENT}
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

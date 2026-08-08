@@ -1,0 +1,17 @@
+# whoami on the production cluster. Three replicas, one per availability zone —
+# the prd apps pool runs three nodes spread across zones, and the spread constraint
+# in the base then places one on each.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: whoami
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 3

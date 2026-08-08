@@ -1,0 +1,23 @@
+# The tenant's share of the shared Gateway, and the only Gateway API object it
+# owns. Attachment succeeds because the platform labelled tenant-whoami with
+# gateway-access: internal; a namespace without that label has its routes refused,
+# so publishing is something the platform grants rather than something a tenant
+# takes.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: whoami
+  namespace: tenant-whoami
+spec:
+  parentRefs:
+    - name: internal
+      namespace: envoy-gateway-system
+      # The TLS listener specifically. Attaching to the plaintext one would bypass
+      # the platform's redirect and serve the application unencrypted.
+      sectionName: https
+  hostnames:
+    - whoami.apps.internal
+  rules:
+    - backendRefs:
+        - name: whoami
+          port: 80

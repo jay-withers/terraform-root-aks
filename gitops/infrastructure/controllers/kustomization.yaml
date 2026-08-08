@@ -1,0 +1,10 @@
+# Controllers and their CRDs only. Custom resources of the kinds installed here
+# live in ../configs, which is gated on this Kustomization reporting Ready.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces.yaml
+  - cert-manager.yaml
+  - envoy-gateway.yaml
+  - kube-prometheus-stack.yaml

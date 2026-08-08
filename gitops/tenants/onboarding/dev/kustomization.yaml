@@ -1,0 +1,9 @@
+# Which tenants exist on the dev cluster. A tenant is onboarded to a cluster by
+# appearing in that cluster's list here — and, because the identity is Azure's
+# rather than Kubernetes', by a matching entry in var.workload_identities in
+# terraform/environments/dev.tfvars. Both, or the pods get no Azure token.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base

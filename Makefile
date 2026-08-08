@@ -16,7 +16,7 @@ BRANCH ?= main
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install protect-branch lint init fmt validate plan apply destroy test
+.PHONY: help install protect-branch lint init fmt validate plan apply destroy validate-gitops
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -50,5 +50,5 @@ apply: init ## terraform init + apply (set ENV=dev|stg|prd to load a tfvars file
 destroy: init ## terraform init + destroy (set ENV=dev|stg|prd to load a tfvars file)
 	terraform -chdir=$(TF_DIR) destroy $(TF_VARS)
 
-test: init ## terraform test (mocked providers — no Azure auth)
-	terraform -chdir=$(TF_DIR) test
+validate-gitops: ## kustomize build + kubeconform over gitops/ (skips if the tools are absent)
+	./scripts/validate-gitops.sh

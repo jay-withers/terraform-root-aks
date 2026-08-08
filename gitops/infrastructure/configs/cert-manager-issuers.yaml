@@ -1,0 +1,57 @@
+# A private certificate authority, in three steps: a self-signed issuer, a CA
+# certificate it signs, and an issuer that signs with that CA.
+#
+# ACME is not an option here and will not become one by accident. Let's Encrypt has
+# to reach the name it is issuing for, over HTTP-01, or see a public DNS record,
+# over DNS-01. This cluster has no public ingress and there is no public DNS zone
+# anywhere in the landing zone — creating one needs a grant in the platform repo
+# first. For names that only resolve inside the VNet, a private CA is not a
+# compromise, it is the correct answer.
+#
+# The consequence to know: nothing trusts this CA until it is told to. Export it
+# with
+#
+#   kubectl get secret internal-ca -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d
+#
+# and import it wherever the certificates need to verify — the jump box's trust
+# store, a browser, a client container. trust-manager is the tidy way to distribute
+# it inside the cluster if that becomes a recurring need.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: internal-ca
+  # cert-manager reads a ClusterIssuer's CA secret from its cluster resource
+  # namespace, which is cert-manager unless the controller was told otherwise. The
+  # issuer below would report a missing secret from anywhere else.
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: ${CLUSTER_NAME} internal CA
+  secretName: internal-ca
+  # Five years. Rotating a root means re-importing it everywhere it was trusted, so
+  # the cost of a short lifetime falls on people rather than on automation — the
+  # opposite of the leaf certificates below, which cert-manager renews unattended.
+  duration: 43800h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: internal-ca
+spec:
+  ca:
+    secretName: internal-ca
