@@ -1,0 +1,183 @@
+# The platform-owned half of the "whoami" tenant.
+#
+# Everything a tenant must not be able to change is here: the namespace it is
+# confined to, the rights it reconciles with, which Azure identity its pods
+# authenticate as, and the network policy that isolates it. The tenant owns only
+# the workloads, in gitops/tenants/whoami/, and reconciles them through the
+# Kustomization at the bottom of this file — as the service account defined here,
+# which cannot escape the namespace.
+#
+# Onboarding a second tenant is a copy of this file plus an entry in
+# var.workload_identities. Nothing else changes.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-whoami
+  labels:
+    # Opts in to the shared internal Gateway. A tenant that should not publish
+    # anything simply does not carry this, and its HTTPRoutes are refused
+    # attachment rather than silently working.
+    gateway-access: internal
+    # The workload identity webhook only mutates pods in namespaces it has been
+    # told about in some versions of the addon; harmless where it is not required,
+    # and it documents that pods here are expected to hold Azure tokens.
+    azure.workload.identity/use: "true"
+---
+# The identity the tenant's pods run as, and the one the federated credential in
+# Azure names. The subject Entra ID stores is built in terraform/locals.tf as
+# "system:serviceaccount:tenant-whoami:whoami" — this namespace and this name,
+# matched as a literal string. Renaming either here without changing
+# var.workload_identities produces AADSTS70021 at the pod's first token request,
+# with an error that names neither side. `terraform output workload_identity_subjects`
+# prints what Azure is actually expecting.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: whoami
+  namespace: tenant-whoami
+  annotations:
+    azure.workload.identity/client-id: ${WHOAMI_CLIENT_ID}
+---
+# A second, separate service account: the one Flux impersonates to reconcile the
+# tenant's manifests. Deliberately not the workload's own — the thing that applies
+# manifests and the thing that serves traffic have no reason to share an identity,
+# and this one holds no Azure credential at all.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: whoami-reconciler
+  namespace: tenant-whoami
+---
+# RoleBinding, never ClusterRoleBinding. This is the entirety of what the tenant
+# can do, and it stops at the namespace boundary: a ClusterRoleBinding committed
+# under gitops/tenants/whoami/ is refused, which is the check that proves the
+# isolation is real rather than nominal.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: whoami-reconciler
+  namespace: tenant-whoami
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: whoami-reconciler
+    namespace: tenant-whoami
+---
+# Which secrets the tenant's pods may mount from the workload Key Vault, and as
+# which identity. Platform-owned on purpose: if the tenant could write this, it
+# could point its own pods at any identity in the subscription, and workload
+# identity would be authentication without authorisation.
+#
+# The vault answers only on a private endpoint, so Terraform cannot seed it. Write
+# the secret from the jump box before expecting a pod to start:
+#
+#   az keyvault secret set --vault-name <workload vault> --name whoami-demo --value hello
+#
+# Until it exists the pod stays in ContainerCreating with a CSI mount failure.
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: whoami-keyvault
+  namespace: tenant-whoami
+spec:
+  provider: azure
+  parameters:
+    clientID: ${WHOAMI_CLIENT_ID}
+    keyvaultName: ${WORKLOAD_KEY_VAULT_NAME}
+    tenantId: ${AZURE_TENANT_ID}
+    # Neither of the older paths: pod identity is retired, and the kubelet's own
+    # managed identity would give every pod on the node the same access.
+    usePodIdentity: "false"
+    useVMManagedIdentity: "false"
+    objects: |
+      array:
+        - |
+          objectName: whoami-demo
+          objectType: secret
+---
+# The tenant's own source. It has to be in the tenant's namespace: the Flux
+# extension enforces multi-tenancy, so a Kustomization here may not reference the
+# flux-system GitRepository. Same repository as the platform today; pointing it at
+# a repository the tenant owns is a change to this URL and nothing else.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: whoami
+  namespace: tenant-whoami
+spec:
+  interval: 5m
+  url: https://github.com/jay-withers/terraform-root-aks.git
+  ref:
+    branch: main
+---
+# The tenant's Kustomization — declared here, in the platform's tree, rather than
+# in the tenant's. That is the load-bearing detail: serviceAccountName is what
+# confines the reconcile to the RoleBinding above, and a tenant able to edit its
+# own Kustomization could simply delete the line and reconcile as cluster-admin.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: whoami
+  namespace: tenant-whoami
+spec:
+  serviceAccountName: whoami-reconciler
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./gitops/tenants/whoami/${CLUSTER_ENVIRONMENT}
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: whoami
+---
+# Isolation, in one policy rather than a default-deny plus a pile of exceptions.
+#
+# Cilium's model makes that the simpler form: an endpoint selected by a policy is
+# default-denied in every direction that policy mentions. Selecting every endpoint
+# in the namespace and then listing the traffic that is allowed therefore denies
+# everything else implicitly — including all egress, which is why nothing here
+# reaches the internet.
+#
+# L3/L4 only. AKS's managed Cilium does not serve L7 or FQDN rules; those need the
+# Advanced Container Networking Services add-on, which is chargeable. A policy
+# written with them applies without error and silently fails to filter.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tenant-baseline
+  namespace: tenant-whoami
+spec:
+  description: "Default-deny for tenant-whoami, admitting only the gateway and Prometheus, and allowing only DNS out."
+  endpointSelector: {}
+  ingress:
+    # The only way in. Anything else on the VNet reaching a pod here directly —
+    # another tenant, a compromised node-local process — is dropped.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: envoy-gateway-system
+    # Prometheus scrapes from the monitoring namespace. Without this the tenant's
+    # metrics targets are permanently down and nobody can tell why.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
+  egress:
+    # DNS, and nothing else. Note what this does not need: the Key Vault CSI mount
+    # is performed by the driver's DaemonSet in kube-system on the node's own
+    # network, not by the pod, so a tenant that reads secrets still needs no egress
+    # of its own. A tenant that genuinely has to call out gets an explicit rule
+    # here, in the platform's tree, where it is reviewable.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

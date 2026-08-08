@@ -10,17 +10,20 @@
 # `ignore_changes = [delegation]` the API server subnet used to need: azapi diffs
 # only what it sends, and the module sends no action list for AKS to rewrite.
 
-# Both NSGs are intentionally ruleless. Azure's own default rules already give
-# exactly the posture a private cluster wants — inbound allowed from the VNet and
-# from the AzureLoadBalancer health probes, everything else denied; outbound
-# allowed to the VNet and the internet, which is what the loadBalancer egress
-# path needs.
+# Azure's own default rules already give exactly the posture a private cluster
+# wants — inbound allowed from the VNet and from the AzureLoadBalancer health
+# probes, everything else denied; outbound allowed to the VNet and the internet,
+# which is what the loadBalancer egress path needs.
 #
 # Note the consequence: a Service of type LoadBalancer with a public IP will not
 # work as-is. AKS adds its allow rules to the NSG it manages on the node NICs in
 # the node resource group, not to these, so client traffic is dropped at the
 # subnet. Exposing something publicly means an explicit inbound rule here — which
 # for a private cluster should be a deliberate act, not a default.
+#
+# The one rule this NSG does carry is that deliberate act in reverse: it names the
+# internal gateway's data path so it survives someone tightening these. See
+# local.node_nsg_rules — it allows nothing the defaults do not.
 module "nsg_nodes" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
@@ -30,8 +33,12 @@ module "nsg_nodes" {
   location            = local.location
   resource_group_name = local.resource_group_name
   tags                = local.tags
+
+  security_rules = local.node_nsg_rules
 }
 
+# Ruleless. Nothing outside the VNet has any business reaching the API server's
+# internal load balancer, and the defaults already say so.
 module "nsg_api_server" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"

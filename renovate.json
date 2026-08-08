@@ -2,6 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>jay-withers/template-renovate"],
   "autoApprove": true,
+  "flux": {
+    "fileMatch": ["^gitops/.+\\.ya?ml$"]
+  },
+  "kubernetes": {
+    "fileMatch": ["^gitops/.+\\.ya?ml$"]
+  },
   "customManagers": [
     {
       "customType": "regex",

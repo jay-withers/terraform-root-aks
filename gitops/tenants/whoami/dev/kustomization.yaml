@@ -1,0 +1,17 @@
+# whoami on the dev cluster. One replica: the dev apps pool scales to two small
+# nodes, and a second replica of a demo application is capacity better spent on the
+# platform components it exists to exercise.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: whoami
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1

@@ -1,0 +1,19 @@
+# The bootstrap tree, shared by every cluster.
+#
+# It holds nothing but the Flux objects that own everything else, and the ConfigMap
+# carrying Terraform's values in. Deliberately so: the ARM Flux configuration prunes
+# what this builds, and it is the one build Terraform substitutes into, so anything
+# heavier here would be both harder to reason about and at risk of having a literal
+# `${` blanked out of it.
+#
+# In particular this must NOT also list ../../infrastructure or ../../tenants
+# directly. Those are owned by the Kustomizations declared here; including them
+# twice would give two controllers the same objects and leave them pruning each
+# other's work.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-vars.yaml
+  - infrastructure.yaml
+  - tenants.yaml

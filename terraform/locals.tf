@@ -172,10 +172,89 @@ locals {
     dns_service_ip      = local.dns_service_ip
   }
 
+  # The frontend address of the internal load balancer the Gateway API data plane
+  # (Envoy Gateway, installed by Flux) publishes itself on. Fixed rather than left
+  # dynamic so a DNS record or a hosts entry can point at it before the Service
+  # exists, and survives the Service being recreated.
+  #
+  # Taken from the far end of the node subnet: AKS allocates node addresses from the
+  # low end, and a /22 holding at most a couple of dozen nodes never reaches here.
+  # The manifests consume it as ${GATEWAY_INTERNAL_IP} — see
+  # local.flux_post_build_substitutions — on the annotation pair
+  # service.beta.kubernetes.io/azure-load-balancer-internal and
+  # service.beta.kubernetes.io/azure-load-balancer-ipv4.
+  gateway_internal_ip = cidrhost(var.node_subnet_address_prefix, -5)
+
+  # Functionally a no-op: Azure's default AllowVnetInBound already permits this, and
+  # the VirtualNetwork tag covers the peered hub as well as this VNet. It is written
+  # down so that whoever tightens this NSG can see that the internal gateway's data
+  # path runs through it — the same reason local.jumpbox_nsg_rules spells out a rule
+  # the defaults already allow.
+  #
+  # Note the source is the VNet. The gateway's load balancer is internal; a public
+  # one would need a rule naming Internet, which for a private cluster should be a
+  # deliberate act rather than something that arrives with an ingress controller.
+  node_nsg_rules = {
+    gateway_inbound = {
+      name                       = "AllowGatewayHttpInbound"
+      priority                   = 100
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_ranges    = ["80", "443"]
+      source_address_prefix      = "VirtualNetwork"
+      destination_address_prefix = "VirtualNetwork"
+    }
+  }
+
   # The extension installs the Flux controllers; the configuration is what points
   # them at a repository. Without a URL there is nothing to point them at, so the
   # cluster gets Flux and no sync.
   flux_configuration_enabled = var.flux_enabled && var.flux_git_repository_url != null
+
+  # The path is a mechanical function of the environment, so it is derived rather
+  # than repeated in three tfvars files — the same argument as local.dns_service_ip:
+  # a second input can only ever drift from the first. Here the drift is invisible.
+  # A path that does not exist is not a plan or an apply failure; ARM accepts it and
+  # the Kustomization then sits NotReady inside a cluster with no public API server.
+  #
+  # var.flux_git_path stays as the override for the one case this cannot cover:
+  # flux_git_repository_url pointed at a repository that is not this one.
+  flux_kustomization_path = coalesce(var.flux_git_path, "gitops/clusters/${var.environment}")
+
+  # The values the GitOps tree needs that only Terraform knows. Flux replaces
+  # ${NAME} in every manifest the bootstrap Kustomization builds, so they reach git
+  # as placeholders and resolve at reconcile time — nobody copies a GUID out of
+  # `terraform output` into a YAML file, and there is no window in which the
+  # manifests reference an identity that does not exist yet.
+  #
+  # Scope matters. Substitution applies to the tree this Kustomization builds and
+  # nothing else: the Kustomizations declared in git inherit none of it and pick up
+  # what they need with postBuild.substituteFrom against a ConfigMap in their own
+  # namespace, which is also what keeps --no-cross-namespace-refs satisfied. So keep
+  # gitops/clusters/<environment>/ to bootstrap objects only. Anything in that tree
+  # containing a literal "${" — a Grafana dashboard, an Envoy template, a shell
+  # script in a ConfigMap — is rewritten to an empty string when the variable is not
+  # defined here.
+  #
+  # None of these are secrets. A client ID names an identity; it does not
+  # authenticate as one.
+  flux_post_build_substitutions = merge(
+    {
+      CLUSTER_ENVIRONMENT = var.environment
+      CLUSTER_NAME        = module.naming.kubernetes_cluster.name
+      AZURE_TENANT_ID     = data.azurerm_client_config.current.tenant_id
+      GATEWAY_INTERNAL_IP = local.gateway_internal_ip
+    },
+    var.workload_key_vault_enabled ? {
+      WORKLOAD_KEY_VAULT_NAME = local.workload_key_vault_name
+    } : {},
+    {
+      for key, identity in var.workload_identities :
+      "${upper(replace(key, "-", "_"))}_CLIENT_ID" => module.workload_identity[key].client_id
+    },
+  )
 
   # The ARM API takes the git credentials base64-encoded. var.flux_git_credentials
   # takes them in their natural form — a PEM, a PAT, a known_hosts file — so the
@@ -418,6 +497,14 @@ locals {
   # plane is only reachable over the private endpoint. var.workload_key_vault_secrets_users
   # is where workload identities go, keyed by index so the map stays known at plan time
   # even when the principal IDs are not.
+  #
+  # The third block is the same trick for the identities this module creates itself.
+  # It deliberately does not route them through var.workload_key_vault_secrets_users:
+  # that would mean applying once to mint the identity, reading its object ID out of
+  # an output, pasting it into tfvars and applying again — leaving a GUID in version
+  # control that nothing keeps in step. Keying on the tenant name instead keeps every
+  # key known at plan time, which is all the module needs; it for_eaches over this
+  # map, so only the keys must be known and principal_id is free to be unknown.
   workload_key_vault_role_assignments = merge(
     {
       deployer = {
@@ -432,7 +519,55 @@ locals {
         principal_id               = principal_id
       }
     },
+    {
+      for key, identity in var.workload_identities :
+      "workload_identity_${key}" => {
+        role_definition_id_or_name = "Key Vault Secrets User"
+        principal_id               = module.workload_identity[key].principal_id
+      }
+      if identity.key_vault_secrets_user
+    },
   )
+
+  # --- tenant workload identities -------------------------------------------
+  # See main.tenants.tf. One user-assigned identity per tenant workload, federated
+  # to the Kubernetes service account that workload runs as.
+
+  # Named like every other role-carrying resource here: the naming module's name with
+  # the role — the tenant — appended last, so every identity in an environment shares
+  # the id-<workload>-<environment> prefix. The cluster's own identity takes the
+  # "-cluster" suffix by the same rule.
+  workload_identity_names = {
+    for key, identity in var.workload_identities :
+    key => "${module.naming.user_assigned_identity.name}-${key}"
+  }
+
+  # A federated credential is what makes a Kubernetes service account token
+  # exchangeable for an Entra ID token, which is what lets a pod authenticate to
+  # Azure with no secret anywhere — no client secret, no certificate, nothing in a
+  # Kubernetes Secret to leak or rotate.
+  #
+  # The subject is matched by exact string. Entra ID never normalises it, so a
+  # namespace or service account that disagrees with the manifests in gitops/ fails
+  # at token exchange with AADSTS70021, not here and not at apply.
+  #
+  # The audience is fixed: api://AzureADTokenExchange is the only value the workload
+  # identity mutating webhook projects into the pod, so any other produces a token no
+  # credential will ever match.
+  #
+  # The inner map key is arbitrary and static — the module for_eaches over this map,
+  # and the issuer URL is unknown until the cluster exists.
+  workload_identity_federated_credentials = {
+    for key, identity in var.workload_identities :
+    key => {
+      kubernetes = {
+        name     = "fic-${key}"
+        audience = ["api://AzureADTokenExchange"]
+        issuer   = module.aks.oidc_issuer_profile_issuer_url
+        subject  = "system:serviceaccount:${identity.namespace}:${identity.service_account}"
+      }
+    }
+  }
 
   # Tooling for the jump box. Installed at first boot rather than baked into a
   # custom image — there is no image pipeline in this repo, and rebuilding the

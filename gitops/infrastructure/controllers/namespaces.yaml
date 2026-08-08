@@ -1,0 +1,28 @@
+# Created here rather than left to the Helm charts. A HelmRelease with
+# targetNamespace does not create the namespace, and `helm install --create-namespace`
+# has no equivalent in the Flux API — an absent namespace is an install that fails
+# and retries until someone notices.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: envoy-gateway-system
+  labels:
+    # The Gateway lives here and admits routes by this label, so the namespace has
+    # to carry it to attach the platform's own catch-all HTTP redirect.
+    gateway-access: internal
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    # Opts the namespace in to the shared internal Gateway. The Gateway admits
+    # routes by namespace label rather than by name, so a namespace that is not
+    # meant to publish anything simply never carries this and cannot attach a
+    # route to it — the default is closed, and opening it is one visible line.
+    gateway-access: internal

@@ -1,0 +1,8 @@
+# Staging cluster. See gitops/clusters/dev/kustomization.yaml — the directory name
+# is derived from var.environment in terraform/locals.tf and cannot be renamed on
+# its own.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base

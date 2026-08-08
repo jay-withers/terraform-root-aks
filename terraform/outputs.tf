@@ -118,6 +118,54 @@ output "flux_configuration_id" {
   value       = one(azurerm_kubernetes_flux_configuration.this[*].id)
 }
 
+output "flux_kustomization_path" {
+  description = "Path inside the repository the cluster's bootstrap Kustomization builds from — \"gitops/clusters/<environment>\" unless flux_git_path overrides it. A path that does not exist applies cleanly and then reports NotReady inside a cluster with no public API server, so this is the value to check against the tree when nothing reconciles."
+  value       = local.flux_kustomization_path
+}
+
+output "flux_post_build_substitutions" {
+  description = "The variables Flux substitutes into the bootstrap Kustomization's manifests. Every placeholder usable in gitops/clusters/<environment>/ appears here; one that does not is replaced with an empty string at reconcile time rather than failing. None of these are secrets — a client ID names an identity, it does not authenticate as one."
+  value       = local.flux_post_build_substitutions
+}
+
+output "gateway_internal_ip" {
+  description = "Private address the internal load balancer in front of the Gateway API data plane answers on. Fixed rather than dynamic so it can be pointed at before the Service exists; there is no private DNS zone for cluster hostnames yet, so this is what a hosts entry on the jump box uses."
+  value       = local.gateway_internal_ip
+}
+
+output "monitoring_node_selector" {
+  description = "The label the monitoring node pool carries and the taint monitoring workloads must tolerate. Exposed so a Helm values file in gitops/ is not a second, silently divergent copy of what main.aks.tf sets — a mismatch schedules the observability stack onto the apps pool, where it competes with applications rather than being isolated from them."
+  value = {
+    node_selector = { workload = "monitoring" }
+    toleration = {
+      key      = "workload"
+      operator = "Equal"
+      value    = "monitoring"
+      effect   = "NoSchedule"
+    }
+  }
+}
+
+output "workload_identity_client_ids" {
+  description = "Client IDs of the tenant workload identities, keyed by tenant name. This is the value a ServiceAccount's azure.workload.identity/client-id annotation and a SecretProviderClass's clientID parameter take. Terraform normally writes these into the manifests itself through the bootstrap Kustomization's post-build substitution, so this is the debugging and hand-authoring path rather than the one the tree depends on."
+  value       = { for key, identity in module.workload_identity : key => identity.client_id }
+}
+
+output "workload_identity_principal_ids" {
+  description = "Object IDs of the tenant workload identities, keyed by tenant name. Use as the principal when granting one of these rights on a resource outside this module; the grants on the workload Key Vault are already made here from var.workload_identities."
+  value       = { for key, identity in module.workload_identity : key => identity.principal_id }
+}
+
+output "workload_identity_subjects" {
+  description = "The exact federated credential subjects, keyed by tenant name — \"system:serviceaccount:<namespace>:<service_account>\". Entra ID matches these by literal string, so this is what to diff against the manifests in gitops/ when a pod fails token exchange with AADSTS70021."
+  value       = { for key, credentials in local.workload_identity_federated_credentials : key => credentials.kubernetes.subject }
+}
+
+output "tenant_id" {
+  description = "Entra ID tenant the cluster and its workload identities belong to. A SecretProviderClass for the Key Vault CSI driver takes this as its tenantId parameter."
+  value       = data.azurerm_client_config.current.tenant_id
+}
+
 output "node_resource_group_name" {
   description = "Name of the auto-generated resource group holding the cluster's node resources."
   value       = module.aks.node_resource_group_name

@@ -1,0 +1,107 @@
+# The shared internal gateway. One Gateway serves every namespace that opts in;
+# tenants own only their HTTPRoutes.
+#
+# That division is deliberate. The Gateway holds the load balancer address, the TLS
+# certificate and the list of who may attach — none of which a tenant should be able
+# to change, and all of which would have to be duplicated if each tenant ran its own.
+---
+# Configures the Kubernetes objects Envoy Gateway creates for this class. The
+# annotations are what make the load balancer internal: without the first, AKS
+# provisions a public IP and publishes this cluster to the internet; without the
+# second, the address is whatever is free that day and a hosts entry pointing at it
+# goes stale the next time the Service is recreated.
+#
+# ${GATEWAY_INTERNAL_IP} is local.gateway_internal_ip in terraform/locals.tf,
+# derived from the node subnet prefix so the two cannot drift.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: internal
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        annotations:
+          service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+          service.beta.kubernetes.io/azure-load-balancer-ipv4: ${GATEWAY_INTERNAL_IP}
+      envoyDeployment:
+        replicas: 2
+        container:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: internal
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: internal
+    namespace: envoy-gateway-system
+---
+# A wildcard, so onboarding a tenant is a namespace label and an HTTPRoute rather
+# than a certificate request. The cost of that convenience is that every tenant's
+# route is served by the same key; acceptable for internal applications behind a
+# private address, and the point at which it stops being acceptable is the point at
+# which a tenant should have its own Gateway.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-internal
+  # Must be the Gateway's own namespace. A listener's certificateRefs may only
+  # cross a namespace boundary with a ReferenceGrant, and a wildcard certificate
+  # every tenant is served by is not something to start granting access to.
+  namespace: envoy-gateway-system
+spec:
+  secretName: apps-internal-tls
+  dnsNames:
+    - apps.internal
+    - "*.apps.internal"
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: internal
+  listeners:
+    # Kept only to redirect. An application that answers on plaintext inside the
+    # VNet is still an application whose traffic anything on the VNet can read.
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: internal
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: apps-internal-tls
+      # A label, not a name list. Adding a tenant is then a property of that
+      # tenant's namespace — which the platform creates — rather than an edit here
+      # that every onboarding has to remember to make.
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: internal

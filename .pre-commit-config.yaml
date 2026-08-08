@@ -65,6 +65,19 @@ repos:
         pass_filenames: false
         files: \.tf$
 
+      # Nothing else looks at gitops/. Flux applies whatever reaches the branch to
+      # a cluster with no public API server, so a manifest that is wrong here fails
+      # where nobody is watching. Skips itself when kustomize or kubeconform are
+      # absent — they are not in the dev container image, which lives in another
+      # repository — so ci-gitops is the authoritative run.
+      - id: validate-gitops
+        name: Build and validate GitOps manifests
+        description: Runs kustomize build over every overlay under gitops/ and checks the output against the Kubernetes and CRD schemas.
+        entry: scripts/validate-gitops.sh
+        language: script
+        pass_filenames: false
+        files: ^gitops/.*\.ya?ml$
+
       # Replace TFLint/Checkov's upstream hooks entirely rather than adding a
       # fixed entry per environment: these discover terraform/environments/*.tfvars
       # at runtime, so a new environment's tfvars is covered automatically —

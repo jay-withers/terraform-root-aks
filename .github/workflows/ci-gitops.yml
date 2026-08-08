@@ -1,0 +1,75 @@
+name: ci-gitops
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Same shape as ci-terraform: path filtering lives here rather than on the
+  # workflow trigger, so the workflow always runs and the required check below
+  # always reports. A workflow skipped by a top-level paths filter leaves a
+  # required check pending forever and blocks the merge.
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      gitops: ${{ steps.filter.outputs.gitops }}
+    steps:
+      - name: Detect GitOps changes
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
+        id: filter
+        with:
+          filters: |
+            gitops:
+              - 'gitops/**'
+              - 'scripts/validate-gitops.sh'
+              - '.github/workflows/ci-gitops.yml'
+
+  # Builds every overlay and checks the result against the Kubernetes and CRD
+  # schemas. This is the only gate on this tree: Flux applies whatever reaches the
+  # branch, to a cluster whose API server has no public endpoint, so a manifest that
+  # is wrong here fails somewhere nobody is watching.
+  validate:
+    needs: changes
+    if: needs.changes.outputs.gitops == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install kustomize and kubeconform
+        env:
+          KUSTOMIZE_VERSION: v5.8.1
+          KUBECONFORM_VERSION: v0.8.0
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kustomize
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /usr/local/bin kubeconform
+
+      - name: Validate manifests
+        run: ./scripts/validate-gitops.sh
+
+  # Single required status check for branch protection. Always runs, and fails only
+  # if validate actually failed — skipped (no GitOps changes) counts as success, so
+  # Terraform-only PRs are not blocked. Mark this check ("ci-gitops") required in
+  # the ruleset alongside "ci-terraform".
+  ci-gitops:
+    needs: [validate]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify GitOps jobs
+        env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+        run: |
+          echo "validate=$VALIDATE_RESULT"
+          if [ "$VALIDATE_RESULT" = "failure" ]; then
+            echo "::error::GitOps manifest validation failed."
+            exit 1
+          fi

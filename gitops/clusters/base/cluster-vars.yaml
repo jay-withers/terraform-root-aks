@@ -1,0 +1,29 @@
+# The values only Terraform knows, carried into the cluster so that the
+# Kustomizations declared in git can reach them.
+#
+# This is the *only* file in the bootstrap tree that may contain a `${` — Terraform
+# substitutes into everything the bootstrap Kustomization builds, and a placeholder
+# it has no value for is replaced with an empty string rather than failing. Keeping
+# them confined here is what makes the rest of the tree safe to write literally.
+# The definitive list of what may appear below is local.flux_post_build_substitutions
+# in terraform/locals.tf.
+#
+# Child Kustomizations inherit none of Terraform's substitution, so they read this
+# ConfigMap with postBuild.substituteFrom instead. It lives in flux-system because
+# that is where those Kustomizations live, and enforced multi-tenancy will not let a
+# Kustomization read a ConfigMap in another namespace.
+#
+# Nothing here is a secret. A client ID names an identity; it does not authenticate
+# as one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-vars
+  namespace: flux-system
+data:
+  CLUSTER_ENVIRONMENT: ${CLUSTER_ENVIRONMENT}
+  CLUSTER_NAME: ${CLUSTER_NAME}
+  AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+  GATEWAY_INTERNAL_IP: ${GATEWAY_INTERNAL_IP}
+  WORKLOAD_KEY_VAULT_NAME: ${WORKLOAD_KEY_VAULT_NAME}
+  WHOAMI_CLIENT_ID: ${WHOAMI_CLIENT_ID}

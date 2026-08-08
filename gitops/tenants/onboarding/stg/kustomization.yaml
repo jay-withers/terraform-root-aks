@@ -1,0 +1,8 @@
+# Which tenants exist on the staging cluster. See ../dev/kustomization.yaml — a
+# tenant needs both an entry here and one in var.workload_identities in
+# terraform/environments/stg.tfvars.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base

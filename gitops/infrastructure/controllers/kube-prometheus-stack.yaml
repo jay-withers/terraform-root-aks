@@ -1,0 +1,193 @@
+# Prometheus, Alertmanager and Grafana, pinned to the monitoring node pool.
+#
+# That pool exists in terraform/main.aks.tf carrying the label workload=monitoring
+# and the taint workload=monitoring:NoSchedule, and until now nothing had ever been
+# scheduled onto it. The taint is what keeps applications off it; the nodeSelector
+# is what keeps this stack on it. Both are needed — the taint alone repels others
+# without attracting these, and a stack that quietly lands on the apps pool
+# competes for CPU with the workloads it is meant to be observing.
+#
+# `terraform output monitoring_node_selector` prints the pair these must match.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: prometheus-community
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://prometheus-community.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "88.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+      interval: 12h
+  install:
+    # The CRDs in this chart are among the largest in the ecosystem and blow the
+    # 256 KiB limit on the last-applied-configuration annotation under client-side
+    # apply. Flux applies server-side, so this is safe here — it is called out
+    # because `kubectl apply -f` of the same manifests is not.
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # AKS runs the control plane; these components are not on any node this cluster
+    # can see, and left enabled they produce four permanently firing "target down"
+    # alerts that teach everyone to ignore alerts. kube-proxy is absent for a
+    # different reason: Cilium replaces it (network_dataplane = "cilium").
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    kubeProxy:
+      enabled: false
+
+    prometheusOperator:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: monitoring
+          effect: NoSchedule
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+
+    prometheus:
+      prometheusSpec:
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: workload
+            operator: Equal
+            value: monitoring
+            effect: NoSchedule
+        # Sized for the dev pool's single 2 vCPU / 8 GiB node. Raise both in
+        # production, where the pool has three nodes and a fortnight of history is
+        # the point of keeping it.
+        retention: 10d
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+        # Azure disks are pinned to the zone they are created in, so a Prometheus
+        # pod whose disk landed in zone 2 can never be rescheduled to zone 1. That
+        # is inherent to the storage, not something configurable here; it is the
+        # reason to treat this data as disposable rather than as a system of record.
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: managed-csi
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 20Gi
+        # Scrape ServiceMonitors and PodMonitors from every namespace, including
+        # tenants'. The tenant network policy admits this namespace explicitly for
+        # exactly this reason.
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+
+    alertmanager:
+      alertmanagerSpec:
+        nodeSelector:
+          workload: monitoring
+        tolerations:
+          - key: workload
+            operator: Equal
+            value: monitoring
+            effect: NoSchedule
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: managed-csi
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 5Gi
+
+    grafana:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: monitoring
+          effect: NoSchedule
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+
+      # The chart's default admin password is a published constant, and this
+      # Grafana is reachable from the whole peered network. Rather than commit a
+      # replacement, it reads one from a Secret an operator creates once from the
+      # jump box:
+      #
+      #   kubectl create secret generic grafana-admin -n monitoring \
+      #     --from-literal=admin-user=admin \
+      #     --from-literal=admin-password="$(openssl rand -base64 24)"
+      #
+      # Until that exists Grafana will not start, which is the intended failure:
+      # visibly absent beats quietly reachable with a known password. Prometheus
+      # and Alertmanager are unaffected.
+      admin:
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+
+      persistence:
+        enabled: true
+        storageClassName: managed-csi
+        size: 5Gi
+
+      # The route onto the shared internal Gateway is in ../configs, with the rest
+      # of the Gateway API objects.
+      ingress:
+        enabled: false
+
+    kube-state-metrics:
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: monitoring
+          effect: NoSchedule
+
+    prometheus-node-exporter:
+      # A DaemonSet, so the opposite rule applies: it must run on every node,
+      # including the tainted system and monitoring pools. No nodeSelector, and a
+      # toleration that matches anything.
+      tolerations:
+        - operator: Exists
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi

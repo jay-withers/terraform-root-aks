@@ -1,0 +1,17 @@
+# Custom resources of the kinds ../controllers installs. Applied only once that
+# Kustomization reports Ready, so nothing here is ever applied against an API
+# server that has not registered the kind.
+#
+# Network policy is not here. Cilium's model is that a policy selecting an endpoint
+# default-denies every direction it mentions, so a cluster-wide default-deny would
+# have to enumerate the egress of kube-system, flux-system and cert-manager before
+# it did anything useful — and would take the cluster off the air the moment it
+# missed one. Isolation is applied per tenant instead, where the blast radius of
+# getting it wrong is one namespace: see gitops/tenants/onboarding/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cert-manager-issuers.yaml
+  - gateway.yaml
+  - routes.yaml

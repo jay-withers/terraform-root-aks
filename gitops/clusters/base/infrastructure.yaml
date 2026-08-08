@@ -1,0 +1,57 @@
+# Platform components, in two stages.
+#
+# The split is not cosmetic: controllers install CRDs, and a Kustomization that
+# contains both a CRD and a custom resource of that kind fails its first apply —
+# the API server has not registered the kind at the moment the build is applied.
+# Splitting them and gating the second on the first means the failure cannot
+# happen rather than being retried away.
+#
+# Both reference the flux-system GitRepository that the ARM Flux configuration
+# creates (see terraform/main.flux.tf). They are in flux-system themselves, so
+# that reference is same-namespace and enforced multi-tenancy permits it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-controllers
+  namespace: flux-system
+spec:
+  interval: 30m
+  retryInterval: 2m
+  # Generous: this is three Helm charts installing on nodes that may still be
+  # pulling images. The bootstrap Kustomization above does not wait for any of it,
+  # so a slow install here delays the platform, it does not fail the ARM apply.
+  timeout: 20m
+  path: ./gitops/infrastructure/controllers
+  prune: true
+  # Ready means the HelmReleases are installed, which is what infra-configs needs
+  # before it can create a Gateway or a ClusterIssuer.
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-configs
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-controllers
+  interval: 30m
+  retryInterval: 2m
+  timeout: 10m
+  path: ./gitops/infrastructure/configs
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: cluster-vars

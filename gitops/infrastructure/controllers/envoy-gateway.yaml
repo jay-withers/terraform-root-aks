@@ -1,0 +1,55 @@
+# Envoy Gateway — the Gateway API data plane, and the reason there is no
+# ingress-nginx here: that project is in retirement, and AKS's managed Cilium does
+# not serve Gateway API itself, so the data plane has to be something separate.
+#
+# The chart brings the Gateway API CRDs with it. The GatewayClass, the Gateway and
+# the EnvoyProxy that configures its load balancer are in ../configs, applied only
+# after this HelmRelease reports Ready.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: envoy-gateway
+  namespace: flux-system
+spec:
+  # Published to a registry rather than a chart index; Flux treats an OCI registry
+  # as a HelmRepository of type oci.
+  type: oci
+  interval: 12h
+  url: oci://docker.io/envoyproxy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: envoy-gateway
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: envoy-gateway
+  targetNamespace: envoy-gateway-system
+  storageNamespace: envoy-gateway-system
+  chart:
+    spec:
+      chart: gateway-helm
+      version: "1.8.3"
+      sourceRef:
+        kind: HelmRepository
+        name: envoy-gateway
+      interval: 12h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # The control plane. The data plane it manages is configured separately, by the
+    # EnvoyProxy resource in ../configs — that is where the load balancer
+    # annotations and the Envoy replica count live, because they are properties of
+    # a GatewayClass rather than of this install.
+    deployment:
+      replicas: 1
+      envoyGateway:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
