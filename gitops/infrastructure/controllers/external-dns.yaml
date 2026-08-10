@@ -1,0 +1,116 @@
+# external-dns, writing the private DNS zone from what the cluster actually
+# publishes. terraform/main.dns.tf creates the zone empty and grants this identity
+# Private DNS Zone Contributor on it; every record in it is written from here.
+#
+# The source is gateway-httproute, not ingress. Nothing in this cluster creates an
+# Ingress — Envoy Gateway serves Gateway API — so an ingress source would watch a
+# kind that never appears and the zone would stay empty with no error anywhere.
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://kubernetes-sigs.github.io/external-dns
+---
+# The provider's configuration. It holds no credential: useWorkloadIdentityExtension
+# sends external-dns to the projected service account token instead, which is why
+# this is a ConfigMap rather than a Secret. The three IDs come from Terraform
+# through cluster-vars — the pod authenticates as its own federated identity, not as
+# whoever ran the apply, so nothing in its environment can tell it where to write.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-dns-azure
+  namespace: external-dns
+data:
+  azure.json: |
+    {
+      "tenantId": "${AZURE_TENANT_ID}",
+      "subscriptionId": "${AZURE_SUBSCRIPTION_ID}",
+      "resourceGroup": "${AZURE_RESOURCE_GROUP}",
+      "useWorkloadIdentityExtension": true
+    }
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: external-dns
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: external-dns
+  targetNamespace: external-dns
+  storageNamespace: external-dns
+  chart:
+    spec:
+      chart: external-dns
+      version: "1.20.0"
+      sourceRef:
+        kind: HelmRepository
+        name: external-dns
+      interval: 12h
+  install:
+    timeout: 10m
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 10m
+    remediation:
+      retries: 3
+  values:
+    provider:
+      name: azure-private-dns
+
+    # Only this cluster's zone. Left unset, external-dns manages every zone the
+    # identity can see — which is one Reader grant away from being a lot of them.
+    domainFilters:
+      - ${APPS_DNS_ZONE_NAME}
+
+    sources:
+      - gateway-httproute
+
+    # Ownership, and the reason this is safe to run in more than one cluster. Every
+    # A record external-dns creates gets a companion TXT record naming this cluster;
+    # a record without one, or with someone else's, is left alone. Without it a
+    # second cluster pointed at the same zone would delete the first's records as
+    # orphans.
+    txtOwnerId: ${CLUSTER_NAME}
+    registry: txt
+
+    # sync, not the upsert-only default: a hostname removed from an HTTPRoute has to
+    # stop resolving, or the zone drifts into describing routes that no longer exist
+    # and DNS goes back to being decoration. Bounded by domainFilters and the TXT
+    # registry above — it deletes only records it created, in one zone.
+    policy: sync
+
+    serviceAccount:
+      create: true
+      name: external-dns
+      annotations:
+        azure.workload.identity/client-id: ${EXTERNAL_DNS_CLIENT_ID}
+
+    # Without this label the mutating webhook projects no token into the pod and
+    # every Azure call fails unauthenticated. It is a pod label, not a service
+    # account annotation; both are needed and they are not interchangeable.
+    podLabels:
+      azure.workload.identity/use: "true"
+
+    extraVolumes:
+      - name: azure-config
+        configMap:
+          name: external-dns-azure
+    extraVolumeMounts:
+      - name: azure-config
+        mountPath: /etc/kubernetes
+        readOnly: true
+
+    # No node selector or toleration: this belongs on the apps pool with the other
+    # cluster-wide controllers. The monitoring pool is tainted for the observability
+    # stack, and the system pool for CriticalAddonsOnly.
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi

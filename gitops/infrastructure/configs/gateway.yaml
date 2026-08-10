@@ -62,8 +62,8 @@ metadata:
 spec:
   secretName: apps-internal-tls
   dnsNames:
-    - apps.internal
-    - "*.apps.internal"
+    - ${APPS_DNS_ZONE_NAME}
+    - "*.${APPS_DNS_ZONE_NAME}"
   issuerRef:
     name: internal-ca
     kind: ClusterIssuer

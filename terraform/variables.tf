@@ -455,6 +455,22 @@ variable "flux_git_credentials" {
   }
 }
 
+variable "apps_dns_zone_suffix" {
+  description = "Suffix of the private DNS zone serving the hostnames this cluster publishes. The environment is prepended to it, so \"apps.internal\" gives dev.apps.internal — see local.apps_dns_zone_name. The zone is created in the landing zone's resource group and linked to this VNet, and external-dns writes a record into it per HTTPRoute hostname. Null skips the zone and the external-dns identity with it, which leaves hosts entries on the jump box as the only way to resolve those names."
+  type        = string
+  default     = "apps.internal"
+
+  validation {
+    condition     = var.apps_dns_zone_suffix == null || can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.apps_dns_zone_suffix))
+    error_message = "apps_dns_zone_suffix must be a lowercase DNS name with at least two labels, e.g. \"apps.internal\"."
+  }
+
+  validation {
+    condition     = var.apps_dns_zone_suffix == null || !endswith(var.apps_dns_zone_suffix, ".local")
+    error_message = "apps_dns_zone_suffix must not end in \".local\" — it is reserved for mDNS and resolves unpredictably on clients that implement it."
+  }
+}
+
 # Authentication and authorization take no inputs by design — Entra ID with Azure
 # RBAC, local accounts off, workload identity on. See locals.tf and main.tf.
 

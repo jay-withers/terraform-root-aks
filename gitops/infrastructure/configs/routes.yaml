@@ -31,8 +31,10 @@ spec:
     - name: internal
       namespace: envoy-gateway-system
       sectionName: https
+  # external-dns reads this and writes the matching A record. The hostname is the
+  # declaration; the record is derived from it.
   hostnames:
-    - grafana.apps.internal
+    - grafana.${APPS_DNS_ZONE_NAME}
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana

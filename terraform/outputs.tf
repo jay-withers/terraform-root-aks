@@ -129,8 +129,13 @@ output "flux_post_build_substitutions" {
 }
 
 output "gateway_internal_ip" {
-  description = "Private address the internal load balancer in front of the Gateway API data plane answers on. Fixed rather than dynamic so it can be pointed at before the Service exists; there is no private DNS zone for cluster hostnames yet, so this is what a hosts entry on the jump box uses."
+  description = "Private address the internal load balancer in front of the Gateway API data plane answers on. Fixed rather than dynamic so it can be pointed at before the Service exists — which is what lets main.dns.tf publish a record for it at plan time. It is also the address a hosts entry uses when apps_dns_zone_name is null."
   value       = local.gateway_internal_ip
+}
+
+output "apps_dns_zone_name" {
+  description = "Private DNS zone serving the hostnames the cluster publishes, or null when apps_dns_zone_suffix is null. Terraform creates it empty; the records in it are external-dns's, one per HTTPRoute hostname. It is linked to this VNet only — a client on another VNet resolves nothing until that VNet is linked too, which is a grant in the landing zone repo."
+  value       = one(azurerm_private_dns_zone.apps[*].name)
 }
 
 output "monitoring_node_selector" {

@@ -24,6 +24,7 @@
 | <a name="module_aks"></a> [aks](#module\_aks) | Azure/avm-res-containerservice-managedcluster/azurerm | ~> 0.6 |
 | <a name="module_aks_identity"></a> [aks\_identity](#module\_aks\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_bastion"></a> [bastion](#module\_bastion) | Azure/avm-res-network-bastionhost/azurerm | ~> 0.9 |
+| <a name="module_external_dns_identity"></a> [external\_dns\_identity](#module\_external\_dns\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_hub_naming"></a> [hub\_naming](#module\_hub\_naming) | Azure/naming/azurerm | ~> 0.4 |
 | <a name="module_jumpbox"></a> [jumpbox](#module\_jumpbox) | Azure/avm-res-compute-virtualmachine/azurerm | ~> 0.21 |
 | <a name="module_jumpbox_key_vault"></a> [jumpbox\_key\_vault](#module\_jumpbox\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.10 |
@@ -42,7 +43,11 @@
 | ---- | ---- |
 | [azurerm_kubernetes_cluster_extension.flux](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_cluster_extension) | resource |
 | [azurerm_kubernetes_flux_configuration.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/kubernetes_flux_configuration) | resource |
+| [azurerm_private_dns_zone.apps](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_dns_zone) | resource |
+| [azurerm_private_dns_zone_virtual_network_link.apps](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_dns_zone_virtual_network_link) | resource |
 | [azurerm_private_dns_zone_virtual_network_link.key_vault](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_dns_zone_virtual_network_link) | resource |
+| [azurerm_role_assignment.external_dns](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
+| [azurerm_role_assignment.external_dns_zone_reader](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) | resource |
 | [azurerm_virtual_network_peering.hub_to_spoke](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_network_peering) | resource |
 | [azurerm_virtual_network_peering.spoke_to_hub](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/virtual_network_peering) | resource |
 | [random_password.jumpbox_admin](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/password) | resource |
@@ -56,6 +61,7 @@
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_api_server_subnet_address_prefix"></a> [api\_server\_subnet\_address\_prefix](#input\_api\_server\_subnet\_address\_prefix) | Address prefix of the subnet the API server is projected into by VNet integration. Delegated to Microsoft.ContainerService/managedClusters and dedicated to the API server; AKS requires /28 or larger. | `string` | `"10.1.4.0/28"` | no |
+| <a name="input_apps_dns_zone_suffix"></a> [apps\_dns\_zone\_suffix](#input\_apps\_dns\_zone\_suffix) | Suffix of the private DNS zone serving the hostnames this cluster publishes. The environment is prepended to it, so "apps.internal" gives dev.apps.internal — see local.apps\_dns\_zone\_name. The zone is created in the landing zone's resource group and linked to this VNet, and external-dns writes a record into it per HTTPRoute hostname. Null skips the zone and the external-dns identity with it, which leaves hosts entries on the jump box as the only way to resolve those names. | `string` | `"apps.internal"` | no |
 | <a name="input_apps_max_count"></a> [apps\_max\_count](#input\_apps\_max\_count) | Maximum node count for the autoscaled apps node pool. | `number` | `6` | no |
 | <a name="input_apps_min_count"></a> [apps\_min\_count](#input\_apps\_min\_count) | Minimum node count for the autoscaled apps node pool. Defaults to one per availability zone for zone resilience. | `number` | `3` | no |
 | <a name="input_apps_vm_size"></a> [apps\_vm\_size](#input\_apps\_vm\_size) | VM size for the apps node pool. | `string` | `"Standard_D2s_v6"` | no |
@@ -101,6 +107,7 @@
 | Name | Description |
 | ---- | ----------- |
 | <a name="output_api_server_subnet_id"></a> [api\_server\_subnet\_id](#output\_api\_server\_subnet\_id) | Resource ID of the subnet the API server is projected into by VNet integration. |
+| <a name="output_apps_dns_zone_name"></a> [apps\_dns\_zone\_name](#output\_apps\_dns\_zone\_name) | Private DNS zone serving the hostnames the cluster publishes, or null when apps\_dns\_zone\_suffix is null. Terraform creates it empty; the records in it are external-dns's, one per HTTPRoute hostname. It is linked to this VNet only — a client on another VNet resolves nothing until that VNet is linked too, which is a grant in the landing zone repo. |
 | <a name="output_cluster_id"></a> [cluster\_id](#output\_cluster\_id) | Resource ID of the AKS cluster. |
 | <a name="output_cluster_identity_principal_id"></a> [cluster\_identity\_principal\_id](#output\_cluster\_identity\_principal\_id) | Principal ID of the user-assigned identity the cluster control plane runs as. Grant this rights on resources the control plane itself must reach, not workloads — those should use workload identity via oidc\_issuer\_url. |
 | <a name="output_cluster_name"></a> [cluster\_name](#output\_cluster\_name) | Name of the AKS cluster. |
@@ -109,7 +116,7 @@
 | <a name="output_flux_kustomization_path"></a> [flux\_kustomization\_path](#output\_flux\_kustomization\_path) | Path inside the repository the cluster's bootstrap Kustomization builds from — "gitops/clusters/<environment>" unless flux\_git\_path overrides it. A path that does not exist applies cleanly and then reports NotReady inside a cluster with no public API server, so this is the value to check against the tree when nothing reconciles. |
 | <a name="output_flux_post_build_substitutions"></a> [flux\_post\_build\_substitutions](#output\_flux\_post\_build\_substitutions) | The variables Flux substitutes into the bootstrap Kustomization's manifests. Every placeholder usable in gitops/clusters/<environment>/ appears here; one that does not is replaced with an empty string at reconcile time rather than failing. None of these are secrets — a client ID names an identity, it does not authenticate as one. |
 | <a name="output_fqdn"></a> [fqdn](#output\_fqdn) | FQDN of the AKS cluster API server. |
-| <a name="output_gateway_internal_ip"></a> [gateway\_internal\_ip](#output\_gateway\_internal\_ip) | Private address the internal load balancer in front of the Gateway API data plane answers on. Fixed rather than dynamic so it can be pointed at before the Service exists; there is no private DNS zone for cluster hostnames yet, so this is what a hosts entry on the jump box uses. |
+| <a name="output_gateway_internal_ip"></a> [gateway\_internal\_ip](#output\_gateway\_internal\_ip) | Private address the internal load balancer in front of the Gateway API data plane answers on. Fixed rather than dynamic so it can be pointed at before the Service exists — which is what lets main.dns.tf publish a record for it at plan time. It is also the address a hosts entry uses when apps\_dns\_zone\_name is null. |
 | <a name="output_hub_vnet_id"></a> [hub\_vnet\_id](#output\_hub\_vnet\_id) | Resource ID of the hub virtual network this cluster is peered to. |
 | <a name="output_jumpbox_id"></a> [jumpbox\_id](#output\_jumpbox\_id) | Resource ID of the jump box VM, or null when jumpbox\_enabled is false. Use as the scope when granting operators "Virtual Machine Administrator Login". |
 | <a name="output_jumpbox_key_vault_name"></a> [jumpbox\_key\_vault\_name](#output\_jumpbox\_key\_vault\_name) | Name of the Key Vault holding the jump box administrator password, or null when jumpbox\_enabled is false. Reading it needs "Key Vault Secrets User" here — Bastion's Key Vault sign-in flow is SSH-key only, so for RDP the operator fetches the credential, not Bastion. |

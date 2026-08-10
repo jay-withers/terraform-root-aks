@@ -7,4 +7,5 @@ resources:
   - namespaces.yaml
   - cert-manager.yaml
   - envoy-gateway.yaml
+  - external-dns.yaml
   - kube-prometheus-stack.yaml

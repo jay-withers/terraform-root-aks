@@ -24,6 +24,13 @@ data:
   CLUSTER_ENVIRONMENT: ${CLUSTER_ENVIRONMENT}
   CLUSTER_NAME: ${CLUSTER_NAME}
   AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+  AZURE_SUBSCRIPTION_ID: ${AZURE_SUBSCRIPTION_ID}
+  AZURE_RESOURCE_GROUP: ${AZURE_RESOURCE_GROUP}
   GATEWAY_INTERNAL_IP: ${GATEWAY_INTERNAL_IP}
   WORKLOAD_KEY_VAULT_NAME: ${WORKLOAD_KEY_VAULT_NAME}
+  # Environment-scoped — dev.apps.internal, not apps.internal. Every published
+  # hostname is built from it rather than written out, so nothing in the tree
+  # carries a name that is right in one cluster and wrong in the other two.
+  APPS_DNS_ZONE_NAME: ${APPS_DNS_ZONE_NAME}
+  EXTERNAL_DNS_CLIENT_ID: ${EXTERNAL_DNS_CLIENT_ID}
   WHOAMI_CLIENT_ID: ${WHOAMI_CLIENT_ID}

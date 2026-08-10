@@ -33,10 +33,36 @@ fi
 # build, so watch the "Skipped" count: anything above zero was not really checked.
 catalog='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
+# Flux resolves ${NAME} at reconcile time, from post-build substitution; kustomize
+# does not, so what reaches kubeconform still carries the placeholders. Most survive
+# validation because they sit in free-form strings, but some do not: an HTTPRoute
+# hostname is pattern-checked, and "whoami.${APPS_DNS_ZONE_NAME}" is not a DNS name.
+#
+# So the placeholders are resolved here against stand-ins first. The values are not
+# this cluster's and are not meant to be — they exist to be the right *shape*, so
+# that what is checked is the manifest's structure rather than Terraform's outputs.
+#
+# Known names are listed so their shape is right where a schema cares. Anything else
+# falls through to the generic rule, which means a mistyped variable name validates
+# rather than failing here — that mistake surfaces as an empty string in the cluster,
+# and the guard against it is keeping this list and
+# local.flux_post_build_substitutions in step.
+resolve_placeholders() {
+  sed -E \
+    -e 's/\$\{APPS_DNS_ZONE_NAME\}/example.internal/g' \
+    -e 's/\$\{CLUSTER_ENVIRONMENT\}/dev/g' \
+    -e 's/\$\{CLUSTER_NAME\}/aks-example-dev/g' \
+    -e 's/\$\{GATEWAY_INTERNAL_IP\}/10.0.0.1/g' \
+    -e 's/\$\{WORKLOAD_KEY_VAULT_NAME\}/kv-example-dev/g' \
+    -e 's/\$\{AZURE_RESOURCE_GROUP\}/rg-example-dev/g' \
+    -e 's/\$\{(AZURE_TENANT_ID|AZURE_SUBSCRIPTION_ID|[A-Z0-9_]+_CLIENT_ID)\}/00000000-0000-0000-0000-000000000000/g' \
+    -e 's/\$\{[A-Z0-9_]+\}/placeholder/g'
+}
+
 status=0
 while IFS= read -r overlay; do
   echo "==> ${overlay#"${root}/"}"
-  if ! kustomize build "$overlay" | kubeconform \
+  if ! kustomize build "$overlay" | resolve_placeholders | kubeconform \
     -strict \
     -summary \
     -schema-location default \

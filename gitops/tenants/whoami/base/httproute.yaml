@@ -15,8 +15,11 @@ spec:
       # The TLS listener specifically. Attaching to the plaintext one would bypass
       # the platform's redirect and serve the application unencrypted.
       sectionName: https
+  # Substituted from the tenant-vars ConfigMap the platform put in this namespace,
+  # so the name is environment-correct in all three clusters. external-dns reads
+  # this route and writes the record; there is no DNS change to make when it moves.
   hostnames:
-    - whoami.apps.internal
+    - whoami.${APPS_DNS_ZONE_NAME}
   rules:
     - backendRefs:
         - name: whoami

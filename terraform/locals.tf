@@ -185,6 +185,23 @@ locals {
   # service.beta.kubernetes.io/azure-load-balancer-ipv4.
   gateway_internal_ip = cidrhost(var.node_subnet_address_prefix, -5)
 
+  # Null is the off switch rather than a separate boolean: a zone with no suffix is
+  # not a zone, and two inputs could disagree about whether one is wanted.
+  apps_dns_zone_enabled = var.apps_dns_zone_suffix != null
+
+  # Derived rather than given per environment, on the same argument as
+  # flux_kustomization_path: a second input can only ever drift from the first, and
+  # the drift here is a zone whose name says dev while its records serve prd.
+  apps_dns_zone_name = local.apps_dns_zone_enabled ? "${var.environment}.${var.apps_dns_zone_suffix}" : null
+
+  # external-dns's chart defaults, written down once because three things have to
+  # agree on them: the federated credential's subject in main.dns.tf, the
+  # ServiceAccount the chart creates, and the annotation carrying the client ID.
+  external_dns_service_account = {
+    namespace = "external-dns"
+    name      = "external-dns"
+  }
+
   # Functionally a no-op: Azure's default AllowVnetInBound already permits this, and
   # the VirtualNetwork tag covers the peered hub as well as this VNet. It is written
   # down so that whoever tightens this NSG can see that the internal gateway's data
@@ -249,6 +266,16 @@ locals {
     },
     var.workload_key_vault_enabled ? {
       WORKLOAD_KEY_VAULT_NAME = local.workload_key_vault_name
+    } : {},
+    # external-dns needs to be told which zone it owns and where it lives; the AKS
+    # cluster's own credentials cannot tell it, because it authenticates as its own
+    # federated identity rather than as the deployer. AZURE_SUBSCRIPTION_ID and
+    # AZURE_RESOURCE_GROUP appear only here, for its azure.json.
+    local.apps_dns_zone_enabled ? {
+      APPS_DNS_ZONE_NAME     = local.apps_dns_zone_name
+      AZURE_SUBSCRIPTION_ID  = data.azurerm_client_config.current.subscription_id
+      AZURE_RESOURCE_GROUP   = local.resource_group_name
+      EXTERNAL_DNS_CLIENT_ID = module.external_dns_identity[0].client_id
     } : {},
     {
       for key, identity in var.workload_identities :
