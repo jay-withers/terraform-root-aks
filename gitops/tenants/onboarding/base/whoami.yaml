@@ -99,6 +99,25 @@ spec:
           objectName: whoami-demo
           objectType: secret
 ---
+# The subset of cluster-vars a tenant may build against, copied into its namespace.
+#
+# It is a copy rather than a reference because enforced multi-tenancy will not let
+# the Kustomization below read a ConfigMap in flux-system, and it is a subset because
+# a tenant has no business substituting another tenant's client ID into its own
+# manifests. This file is built by the `tenants` Kustomization, which does read
+# cluster-vars — so the value lands here already resolved.
+#
+# Platform-owned, like everything else in this directory: a tenant that could edit
+# this could point its own hostname at another environment's zone.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-vars
+  namespace: tenant-whoami
+data:
+  APPS_DNS_ZONE_NAME: ${APPS_DNS_ZONE_NAME}
+  CLUSTER_ENVIRONMENT: ${CLUSTER_ENVIRONMENT}
+---
 # The tenant's own source. It has to be in the tenant's namespace: the Flux
 # extension enforces multi-tenancy, so a Kustomization here may not reference the
 # flux-system GitRepository. Same repository as the platform today; pointing it at
@@ -134,6 +153,13 @@ spec:
   sourceRef:
     kind: GitRepository
     name: whoami
+  # Same-namespace, which is the only kind enforced multi-tenancy allows. It is what
+  # lets the tenant's HTTPRoute write ${APPS_DNS_ZONE_NAME} instead of a hostname
+  # that would be correct in exactly one of the three clusters.
+  postBuild:
+    substituteFrom:
+      - kind: ConfigMap
+        name: tenant-vars
 ---
 # Isolation, in one policy rather than a default-deny plus a pile of exceptions.
 #

@@ -39,6 +39,9 @@ structural, not cosmetic:
   this creates only its own virtual network link, written into the hub's resource
   group. A VNet links to only one zone of a given name, and the zone outlives any
   single spoke — so destroying this cluster removes the link and leaves the zone.
+  `apps.internal` is the opposite case and is created here (`main.dns.tf`): nothing
+  outside this spoke serves those names, so the zone is destroyed with the cluster.
+  Ownership follows whether the zone outlives the spoke, not whether it is DNS.
 - **It creates both halves of the hub peering** (`main.hub.tf`). Peering is a write on
   each VNet independently; one side alone stays Initiated, never Connected. The vended
   identity holds a custom five-action peering role on the hub VNet for exactly this,

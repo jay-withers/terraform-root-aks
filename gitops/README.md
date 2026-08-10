@@ -119,8 +119,19 @@ kubectl create secret generic grafana-admin -n monitoring \
 
 Hostnames are under `apps.internal`, served by the internal gateway at
 `terraform output gateway_internal_ip` (`10.1.3.251` on the default node subnet).
-There is no DNS zone for them yet — creating one needs a Private DNS Zone
-Contributor grant in the platform repo — so add a hosts entry on the jump box:
+
+`terraform/main.dns.tf` creates the `apps.internal` private DNS zone and links it to
+this VNet, with a wildcard record pointing every name in it at that address. So
+anything on this VNet — the jump box included — resolves these names with no hosts
+entry, and onboarding a tenant needs no DNS change: the record already covers it.
+
+Two consequences worth knowing. A name resolves whether or not an `HTTPRoute`
+claims it, so a typo reaches Envoy and comes back 404 rather than NXDOMAIN. And the
+zone is linked to this VNet only — resolving from the hub or another spoke needs a
+link on that VNet, which is a grant in the platform repo, not a change here.
+
+Setting `apps_dns_zone_name = null` skips the zone, and then it is back to a hosts
+entry on the jump box:
 
 ```
 10.1.3.251  whoami.apps.internal grafana.apps.internal

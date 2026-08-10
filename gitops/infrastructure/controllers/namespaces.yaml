@@ -19,6 +19,13 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  # No gateway-access label: external-dns watches HTTPRoutes, it does not publish
+  # one. It writes to Azure, and its only in-cluster traffic is to the API server.
+  name: external-dns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: monitoring
   labels:
     # Opts the namespace in to the shared internal Gateway. The Gateway admits
