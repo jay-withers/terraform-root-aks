@@ -33,4 +33,20 @@ data:
   # carries a name that is right in one cluster and wrong in the other two.
   APPS_DNS_ZONE_NAME: ${APPS_DNS_ZONE_NAME}
   EXTERNAL_DNS_CLIENT_ID: ${EXTERNAL_DNS_CLIENT_ID}
+  # Loki's log store. The account name carries a random suffix because the blob
+  # namespace is global, so unlike every other name here it cannot be derived from
+  # workload and environment — it has to be carried.
+  LOKI_STORAGE_ACCOUNT: ${LOKI_STORAGE_ACCOUNT}
+  LOKI_CHUNKS_CONTAINER: ${LOKI_CHUNKS_CONTAINER}
+  LOKI_RULER_CONTAINER: ${LOKI_RULER_CONTAINER}
+  LOKI_CLIENT_ID: ${LOKI_CLIENT_ID}
+  # The only bound on the blob bill: Loki's own default is to keep every chunk
+  # forever. Per environment, from var.loki_retention_days.
+  #
+  # Carries Loki's duration literal — "14d" — rather than the number, and that is
+  # load-bearing rather than cosmetic. A ConfigMap's data values must be strings,
+  # and quoting here does not survive: kustomize re-emits a string that does not
+  # need quotes without them, so a bare `14` reaches the API server as a number
+  # and invalidates this whole ConfigMap, taking every other variable down with it.
+  LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD}
   WHOAMI_CLIENT_ID: ${WHOAMI_CLIENT_ID}

@@ -201,6 +201,17 @@ variable "workload_key_vault_secrets_users" {
   default     = []
 }
 
+variable "loki_retention_days" {
+  description = "How long Loki keeps log chunks before its compactor deletes them. The blob account is billed on what is stored, so this is the only thing bounding that bill — Loki's own default is to keep everything forever. Applied by the compactor in gitops/infrastructure/controllers/loki.yaml, which reads it as the LOKI_RETENTION_PERIOD substitution (this number with a \"d\" appended), not by a lifecycle rule on the account: Loki has to delete its index entries in the same pass, and a rule that expired chunks underneath it would leave the index pointing at blobs that no longer exist."
+  type        = number
+  default     = 14
+
+  validation {
+    condition     = var.loki_retention_days >= 1 && var.loki_retention_days <= 365
+    error_message = "loki_retention_days must be between 1 and 365."
+  }
+}
+
 # --- tenant workload identities ---------------------------------------------
 # One user-assigned identity per tenant workload, federated to the Kubernetes
 # service account it runs as. See main.tenants.tf.

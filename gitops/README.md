@@ -9,7 +9,7 @@ through ARM, and this tree is what it reconciles.
 gitops/
 ├── clusters/<env>/          bootstrap only — the Flux objects that own everything else
 ├── infrastructure/
-│   ├── controllers/         cert-manager, Envoy Gateway, kube-prometheus-stack
+│   ├── controllers/         cert-manager, Envoy Gateway, kube-prometheus-stack, Loki, Alloy
 │   └── configs/             the custom resources those controllers serve
 └── tenants/
     ├── onboarding/<env>/    platform-owned: namespace, identity, RBAC, policy, sources
@@ -92,6 +92,47 @@ Consequence: a literal `${` anywhere in `clusters/<env>/` is replaced with an em
 string if Terraform has no value for it. Keep that directory to bootstrap objects.
 `terraform output flux_post_build_substitutions` lists what is defined.
 
+## Logs
+
+Loki and Grafana Alloy sit alongside the metrics stack, and the split between them
+is worth understanding before changing either.
+
+**Alloy is the one component that must run everywhere.** It is a DaemonSet, and it
+reads finished log files off each node's own filesystem under `/var/log/pods`. So
+unlike every other block in `controllers/`, it carries no `nodeSelector` and a
+toleration matching *everything* — the system pool is tainted `CriticalAddonsOnly`
+and the monitoring pool `workload=monitoring`, and a collector that tolerates
+neither quietly collects only from the apps pool while reporting itself healthy.
+
+That it reads from the node, rather than receiving pushes, is also why tenants need
+no new egress rule: no tenant pod ever sends Alloy anything. Same argument as the
+Key Vault CSI mount, which the tenant policy already documents.
+
+**Loki keeps nothing durable in the cluster.** Chunks and index go to the blob
+account in `terraform/main.loki.tf`, over a private endpoint, authenticated with
+workload identity — `useFederatedToken`, not `useManagedIdentity`, so it is Loki's
+own service account token being exchanged rather than the node's identity. Shared
+access keys are disabled on the account, so there is no key to configure and no
+fallback if the identity is wrong. Its PVC holds only the write-ahead log; losing
+it costs minutes of ingest, not history.
+
+**Retention is the only bound on the blob bill.** Loki's own default is to keep
+everything forever. `var.loki_retention_days` becomes `LOKI_RETENTION_PERIOD`, and
+the compactor is what enforces it — `retention_enabled` must stay true, or the
+period is read, reported and never acted on, with nothing anywhere reporting that.
+
+**Loki's `auth_enabled` is false, and that is not the cluster's tenancy boundary.**
+Every line carries its namespace as a label, but anyone who can query Loki can query
+every namespace. Grafana's own login is the boundary today. Making Loki multi-tenant
+means a tenant per namespace and a Grafana organisation to match — a migration, not
+a flag.
+
+Two chart defaults are turned off because they do not fit this cluster rather than
+because they are wrong: `chunksCache` and `resultsCache` are memcached StatefulSets
+that between them ask for more memory than a monitoring node has, and
+`deploymentMode` is `SingleBinary` rather than the default `SimpleScalable`, which
+would be three StatefulSets and a gateway.
+
 ## Deliberate omissions
 
 **No cluster-wide default-deny network policy.** In Cilium, a policy that selects an
@@ -108,6 +149,10 @@ written with them applies without error and silently fails to filter.
 Let's Encrypt can complete neither HTTP-01 nor DNS-01. cert-manager runs a private
 CA instead, which is the right answer for names that only resolve inside the VNet —
 but nothing trusts it until told to.
+
+**No log-based alerting.** Loki's ruler has a bucket and nothing in it. Alerting is
+Prometheus's, through Alertmanager; a rule that fires on log content is a second
+alerting path with its own silences and its own routing to keep in step.
 
 **No ingress-nginx.** The project is in retirement, and AKS's managed Cilium does not
 serve Gateway API itself, so the data plane is Envoy Gateway.

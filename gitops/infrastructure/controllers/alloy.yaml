@@ -1,0 +1,163 @@
+# Grafana Alloy, the collector that puts logs into Loki.
+#
+# Promtail was the thing that used to do this and is end-of-life; Alloy is its
+# replacement and the only collector Grafana still ships.
+#
+# Read the scheduling block below before changing anything in it. This is the one
+# component in the tree that must run on *every* node, which makes it the exact
+# inverse of every other block in these files — copying the monitoring pool's
+# nodeSelector and toleration onto it produces a collector that reads only its own
+# logs, and reports itself perfectly healthy while doing so.
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: alloy
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  dependsOn:
+    # Not strictly required — Alloy buffers and retries a refused push — but it
+    # keeps the first minutes after a bootstrap free of connection-refused noise
+    # that looks like a misconfiguration and is not.
+    - name: loki
+  chart:
+    spec:
+      chart: alloy
+      version: "1.11.1"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+      interval: 12h
+  install:
+    timeout: 10m
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 10m
+    remediation:
+      retries: 3
+  values:
+    controller:
+      type: daemonset
+
+      # No nodeSelector, and a toleration that matches everything. Logs exist on
+      # every node, so the collector has to be admitted to every node: the system
+      # pool carries CriticalAddonsOnly=true:NoSchedule and the monitoring pool
+      # carries workload=monitoring:NoSchedule, and a collector that tolerates
+      # neither lands only on the apps pool. `operator: Exists` with no key is the
+      # only form that also covers a taint added to a pool later.
+      tolerations:
+        - operator: Exists
+
+    rbac:
+      create: true
+
+      # The chart templates an empty rule list by default, which produces a
+      # ClusterRole that grants nothing and an Alloy that logs 403 on every
+      # discovery refresh while its pods stay Ready. These are the reads
+      # discovery.kubernetes needs and nothing else — no writes anywhere.
+      clusterRules:
+        - apiGroups: [""]
+          resources:
+            - nodes
+            - nodes/proxy
+            - namespaces
+            - pods
+          verbs: ["get", "list", "watch"]
+
+    alloy:
+      # The node's log directory, mounted read-only by the chart. This is what makes
+      # collection free of the tenant network policies: Alloy reads finished log
+      # files off the node's own filesystem, so no tenant pod ever sends it
+      # anything and no tenant needs an egress rule — the same argument that lets
+      # the Key Vault CSI mount work against a default-deny tenant.
+      mounts:
+        varlog: true
+
+      resources:
+        requests:
+          cpu: 25m
+          memory: 128Mi
+
+      configMap:
+        content: |-
+          // Every pod in the cluster, cluster-wide. Each DaemonSet replica then
+          // narrows that to its own node in local.file_match below, because a log
+          // file for a pod on another node simply does not exist here. That is
+          // cheaper than it looks and is how Grafana's own reference config does
+          // it, but it does mean every replica watches the full pod list.
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pods.targets
+
+            // The label set every query in Grafana filters on. Keep it to labels
+            // with bounded cardinality — a label per pod is already at the edge of
+            // what Loki wants, and adding one per container image or per commit
+            // SHA is the usual way to make an index unusable.
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_node_name"]
+              target_label  = "node"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+              separator     = "/"
+              target_label  = "job"
+            }
+
+            // Where kubelet actually writes the file. The pod UID and container
+            // name are the only two things in the path that vary, and both come
+            // from discovery — so this resolves to a real path without anything
+            // having to know the container runtime.
+            rule {
+              source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+              separator     = "/"
+              action        = "replace"
+              replacement   = "/var/log/pods/*$1/*.log"
+              target_label  = "__path__"
+            }
+          }
+
+          local.file_match "pod_logs" {
+            path_targets = discovery.relabel.pod_logs.output
+          }
+
+          loki.source.file "pod_logs" {
+            targets    = local.file_match.pod_logs.targets
+            forward_to = [loki.process.pod_logs.receiver]
+          }
+
+          // AKS runs containerd, so every line on disk is CRI-framed: a timestamp,
+          // a stream name, a partial/full marker, then the payload. Without this
+          // stage all of that framing is stored as part of the log line and every
+          // query in Grafana has to strip it by hand. It also reassembles lines the
+          // runtime split, which is what stops long stack traces arriving in pieces.
+          loki.process "pod_logs" {
+            stage.cri {}
+
+            forward_to = [loki.write.default.receiver]
+          }
+
+          loki.write "default" {
+            endpoint {
+              url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }

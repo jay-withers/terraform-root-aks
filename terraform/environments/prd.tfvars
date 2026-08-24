@@ -10,6 +10,13 @@
 
 environment = "prd"
 
+# A month, against fourteen days elsewhere. This is the copy anyone goes back to
+# after an incident review, and at production's log volume it is still a few pounds
+# a month of blob — the cost that matters here is the monitoring pool, not the
+# storage. Raise deliberately: retention is enforced by Loki's compactor, so
+# lengthening it grows the account from the day it changes rather than retroactively.
+loki_retention_days = 30
+
 # --- GitOps ------------------------------------------------------------------
 # Same repository as every other environment; the path derives from `environment`
 # in locals.tf. The repository is public, so no credentials are needed.
