@@ -4,7 +4,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     # Used only by the AVM modules, but declared here so the tests can mock it —
     # `mock_provider "azapi"` otherwise resolves to hashicorp/azapi.
