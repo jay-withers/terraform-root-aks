@@ -57,6 +57,21 @@ The tenant owns only its `Deployment`, `Service` and `HTTPRoute`. The check that
 isolation is real: commit a `ClusterRoleBinding` under `tenants/<tenant>/` and watch
 the Kustomization refuse it.
 
+`admin` covers the `HTTPRoute` only because the `gateway-api-admin` ClusterRole in
+`infrastructure/configs/gateway.yaml` says so. `admin`, `edit` and `view` are
+aggregated ClusterRoles that pick up the
+built-in namespaced kinds and nothing else, so **a CRD installed by a chart is
+invisible to them** until a ClusterRole labelled
+`rbac.authorization.k8s.io/aggregate-to-admin` names it. A tenant hitting
+`cannot patch resource "<plural>" in API group ...` on a custom kind wants a rule
+there — not a wider binding, and not `multiTenancy.enforce = "false"`. That the role
+is cluster-scoped grants nothing by itself: the tenant reaches it through a
+`RoleBinding`, so the rights stop at the namespace.
+
+Each such role lives in the file declaring the resource it opens up, not in an
+`rbac.yaml` — the grant and the thing granted are one decision, and splitting them
+is how one gets changed without the other.
+
 `azurerm_kubernetes_flux_configuration`'s `kustomizations` block has no
 `service_account_name` attribute, which is why every Kustomization except the
 bootstrap one is declared here rather than in Terraform.
