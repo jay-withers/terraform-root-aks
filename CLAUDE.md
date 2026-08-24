@@ -145,9 +145,16 @@ reusable module:
 - **Provider lock files are committed.** The template excludes them because consumers
   generate their own; a root config's locks are its own to pin. This is what the
   template's own `.gitignore` note says to do when repurposing it as a root config.
-- **`renovate.json` uses `customManagers`, not `regexManagers`.** Same coverage as the
-  template (`.terraform-version`, the `.tflint.hcl` azurerm plugin pin), but
-  `regexManagers` is the deprecated spelling. Worth backporting to the template.
+- **`renovate.json` uses `customManagers`, not `regexManagers`**, and
+  `managerFilePatterns`, not `fileMatch`. Same coverage as the template
+  (`.terraform-version`, the `.tflint.hcl` azurerm plugin pin) plus the `flux` and
+  `kubernetes` managers pointed at `gitops/**`, which the template has no need for.
+  Both old spellings are gone from the current schema, and an unknown option is a
+  `CONFIG_VALIDATION` error that aborts the whole repository run — the repo stays
+  onboarded and silent rather than reporting a problem, so check
+  `developer.mend.io` when Renovate goes quiet. Note that `managerFilePatterns`
+  treats a bare string as a glob: the values here are regexes and must keep their
+  `/.../` delimiters. Worth backporting to the template.
 
 `scripts/check-tf-file-layout.sh`, `checkov-per-env.sh` and `protect-branch.sh` are
 verbatim copies — re-copy rather than hand-editing if they change upstream. One fix was
