@@ -12,6 +12,11 @@ apps_max_count = 4
 monitoring_min_count = 2
 monitoring_max_count = 3
 
+# The default. Staging mirrors production's shape, and retention is one of the
+# things worth exercising at the same length rather than discovering in prd that
+# the compactor never kept up.
+loki_retention_days = 14
+
 # --- GitOps ------------------------------------------------------------------
 # Same repository as every other environment; the path derives from `environment`
 # in locals.tf. The repository is public, so no credentials are needed.

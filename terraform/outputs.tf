@@ -175,3 +175,18 @@ output "node_resource_group_name" {
   description = "Name of the auto-generated resource group holding the cluster's node resources."
   value       = module.aks.node_resource_group_name
 }
+
+output "loki_storage_account_name" {
+  description = "Name of the storage account holding Loki's chunks, index and rules. Globally unique, so it carries the naming module's random suffix rather than being derivable from workload_name and environment. Shared access keys are disabled on it: reaching this from the jump box means `az storage blob list --auth-mode login`, and an `--account-key` invocation will fail no matter which key is offered."
+  value       = local.loki_storage_account_name
+}
+
+output "loki_identity_client_id" {
+  description = "Client ID of the identity Loki authenticates to Azure with. Terraform writes this into the manifests itself through the bootstrap Kustomization's post-build substitution as LOKI_CLIENT_ID, so this is the debugging path rather than the one the tree depends on."
+  value       = module.loki_identity.client_id
+}
+
+output "loki_identity_subject" {
+  description = "The exact federated credential subject Entra ID matches for Loki — \"system:serviceaccount:monitoring:loki\". Matched by literal string and never normalised, so this is what to diff against the ServiceAccount in gitops/ when Loki logs AADSTS70021 on its first write."
+  value       = "system:serviceaccount:${local.loki_service_account.namespace}:${local.loki_service_account.name}"
+}

@@ -35,10 +35,14 @@ structural, not cosmetic:
   it here without changing it there breaks the lookup.
 - **There is no `location` variable.** Region comes from the vended resource group. A
   variable could only ever disagree with the group the resources live in.
-- **It does not create the `privatelink.vaultcore.azure.net` zone.** The hub owns it;
-  this creates only its own virtual network link, written into the hub's resource
+- **It does not create the `privatelink.vaultcore.azure.net` or
+  `privatelink.blob.core.windows.net` zones.** The hub owns both — the first for the
+  workload Key Vault, the second for Loki's log store; this creates only its own
+  virtual network links, written into the hub's resource
   group. A VNet links to only one zone of a given name, and the zone outlives any
   single spoke — so destroying this cluster removes the link and leaves the zone.
+  Each zone must be named in this landing zone's `linkable_dns_zones`, or the link
+  fails with `AuthorizationFailed` while everything else applies cleanly.
   `apps.internal` is the opposite case and is created here (`main.dns.tf`): nothing
   outside this spoke serves those names, so the zone is destroyed with the cluster.
   Ownership follows whether the zone outlives the spoke, not whether it is DNS.
@@ -118,6 +122,15 @@ Onboarding a tenant touches both trees: a directory under `gitops/tenants/` **an
 an entry in `var.workload_identities`. The namespace and service account in tfvars
 are matched by Entra ID as a literal string, and a mismatch surfaces only as
 `AADSTS70021` at the pod's first token request.
+
+Two things about the observability stack are worth knowing before touching it. Alloy
+is a DaemonSet that must run on **every** pool, so it carries a match-everything
+toleration and no `nodeSelector` — the inverse of every other block in
+`controllers/`, and copying the monitoring pool's pair onto it yields a collector
+that silently reads only its own logs. And Loki's storage account has shared access
+keys disabled, so nothing anywhere holds a credential for it: the ServiceAccount
+annotation and the `azure.workload.identity/use` pod label are both load-bearing,
+and neither has a fallback path if it is wrong.
 
 Nothing in CI validates YAML beyond `check-yaml` and `actionlint`, so `ci-gitops`
 (`kustomize build` piped into `kubeconform`) is the only gate on this tree —

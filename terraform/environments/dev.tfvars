@@ -20,6 +20,12 @@ monitoring_min_count = 1
 # and with max equal to min the autoscaler cannot help — pods simply stay Pending.
 monitoring_max_count = 2
 
+# Loki now shares this pool with the metrics stack, which is what makes the second
+# node above load-bearing rather than headroom — expect the autoscaler to take it.
+# Seven days rather than the fourteen-day default: dev logs are for debugging what
+# happened this week, and the blob account is billed on what is stored.
+loki_retention_days = 7
+
 # --- GitOps ------------------------------------------------------------------
 # This cluster reconciles from this same repository. The per-environment path is
 # derived in locals.tf as "gitops/clusters/<environment>"; do not repeat it here.

@@ -39,3 +39,8 @@ data "azurerm_private_dns_zone" "key_vault" {
   name                = "privatelink.vaultcore.azure.net"
   resource_group_name = module.hub_naming.resource_group.name
 }
+
+data "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = module.hub_naming.resource_group.name
+}

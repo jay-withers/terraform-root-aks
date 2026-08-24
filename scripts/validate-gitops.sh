@@ -55,6 +55,10 @@ resolve_placeholders() {
     -e 's/\$\{GATEWAY_INTERNAL_IP\}/10.0.0.1/g' \
     -e 's/\$\{WORKLOAD_KEY_VAULT_NAME\}/kv-example-dev/g' \
     -e 's/\$\{AZURE_RESOURCE_GROUP\}/rg-example-dev/g' \
+    -e 's/\$\{LOKI_STORAGE_ACCOUNT\}/stexampledev01/g' \
+    -e 's/\$\{LOKI_CHUNKS_CONTAINER\}/loki-chunks/g' \
+    -e 's/\$\{LOKI_RULER_CONTAINER\}/loki-ruler/g' \
+    -e 's/\$\{LOKI_RETENTION_PERIOD\}/14d/g' \
     -e 's/\$\{(AZURE_TENANT_ID|AZURE_SUBSCRIPTION_ID|[A-Z0-9_]+_CLIENT_ID)\}/00000000-0000-0000-0000-000000000000/g' \
     -e 's/\$\{[A-Z0-9_]+\}/placeholder/g'
 }
