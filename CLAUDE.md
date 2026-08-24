@@ -149,12 +149,13 @@ reusable module:
   `managerFilePatterns`, not `fileMatch`. Same coverage as the template
   (`.terraform-version`, the `.tflint.hcl` azurerm plugin pin) plus the `flux` and
   `kubernetes` managers pointed at `gitops/**`, which the template has no need for.
-  Both old spellings are gone from the current schema, and an unknown option is a
-  `CONFIG_VALIDATION` error that aborts the whole repository run — the repo stays
-  onboarded and silent rather than reporting a problem, so check
-  `developer.mend.io` when Renovate goes quiet. Note that `managerFilePatterns`
-  treats a bare string as a glob: the values here are regexes and must keep their
-  `/.../` delimiters. Worth backporting to the template.
+  Both old spellings still work — Renovate migrates them at runtime, and
+  `renovate-config-validator` passes them while printing the rewrite — so this is
+  the modern spelling rather than a fix for anything; the template's own
+  `regexManagers`/`fileMatch` are not broken. Worth backporting regardless, to keep
+  the two in step. The one thing that is not cosmetic: `managerFilePatterns` treats
+  a bare string as a glob, so regex values must keep their `/.../` delimiters, which
+  is exactly what the migration emits.
 
 `scripts/check-tf-file-layout.sh`, `checkov-per-env.sh` and `protect-branch.sh` are
 verbatim copies — re-copy rather than hand-editing if they change upstream. One fix was
