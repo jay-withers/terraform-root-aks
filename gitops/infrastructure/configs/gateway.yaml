@@ -105,3 +105,52 @@ spec:
           selector:
             matchLabels:
               gateway-access: internal
+---
+# The namespace label above grants the right to publish; this grants the right to
+# write the object that does it. Both are needed, and the second is easy to miss.
+#
+# `admin`, `edit` and `view` are aggregated ClusterRoles: the API server composes
+# each from the ClusterRoles labelled for it, and only the built-in namespaced kinds
+# carry those labels. Gateway API arrives as CRDs with the Envoy Gateway chart, whose
+# own ClusterRoles are the controller's — so nothing aggregates routes into `admin`,
+# and a tenant reconciler bound to it creates its Deployment and its Service and is
+# then refused the one object the tree exists to publish:
+#
+#   httproutes.gateway.networking.k8s.io "whoami" is forbidden: User
+#   "system:serviceaccount:tenant-whoami:whoami-reconciler" cannot patch resource
+#   "httproutes" ... in the namespace "tenant-whoami"
+#
+# Cluster-scoped by necessity — aggregation reads nothing else — but it hands out
+# nothing on its own. Tenants reach it through a RoleBinding (see
+# ../../tenants/onboarding/), so the reach is still one namespace. Which is why
+# cluster-scoped kinds are deliberately absent: a `gatewayclasses` rule would be
+# inert through a RoleBinding while reading as though the platform had granted them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gateway-api-admin
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+  # `gateways` is not here. The Gateway is shared and holds the load balancer address
+  # and the wildcard certificate; a tenant attaches to it by parentRef, which needs
+  # no permission on it at all.
+  #
+  # referencegrants because a route whose backend is in another namespace is accepted
+  # only if that namespace grants it. The grant belongs to the namespace being
+  # referenced, so this lets a tenant admit traffic to itself and does not let it
+  # reach into anyone else.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources:
+      - httproutes
+      - grpcroutes
+      - referencegrants
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"]
+  # Status is written by the Envoy Gateway controller, never by a tenant, but Flux
+  # reads it: `wait: true` on the tenant Kustomization health-checks the route's
+  # Accepted condition. Read-only, so a tenant cannot mark its own route accepted.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources:
+      - httproutes/status
+      - grpcroutes/status
+    verbs: ["get", "list", "watch"]
