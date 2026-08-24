@@ -23,9 +23,6 @@ locals {
   # This local is for the one name the module cannot generate correctly: Bastion.
   name_suffix = "${var.workload_name}-${var.environment}"
 
-  # The private endpoint subnet and its NSG follow the vault; nothing else takes one.
-  privatelink_enabled = var.workload_key_vault_enabled
-
   # Every subnet in the cluster VNet, as the AVM virtual network module takes them.
   #
   # Subnet names stay role-only, unlike the <type>-<workload>-<environment>-<role>
@@ -81,17 +78,22 @@ locals {
         network_security_group            = { id = module.nsg_jumpbox[0].resource_id }
       }
     } : {},
-    local.privatelink_enabled ? {
+    # Unconditional, unlike the jump box above. Loki's log store always takes a
+    # private endpoint, so this subnet is always needed — it used to follow
+    # workload_key_vault_enabled, which would now delete the subnet out from under
+    # that endpoint. Note that shrinking it is a subnet rebuild and so a cluster
+    # rebuild, since private_endpoint_network_policies is create-time only.
+    {
       privatelink = {
         name                              = "snet-privatelink"
         address_prefix                    = var.privatelink_subnet_address_prefix
         private_endpoint_network_policies = "Disabled"
-        network_security_group            = { id = module.nsg_privatelink[0].resource_id }
+        network_security_group            = { id = module.nsg_privatelink.resource_id }
 
         # A private endpoint originates nothing.
         default_outbound_access_enabled = false
       }
-    } : {},
+    },
   )
 
   # Scoped to the subnets the cluster runs in, not the whole VNet. The jump box and
@@ -277,6 +279,24 @@ locals {
       AZURE_RESOURCE_GROUP   = local.resource_group_name
       EXTERNAL_DNS_CLIENT_ID = module.external_dns_identity[0].client_id
     } : {},
+    # Loki addresses its store by account and container name, and authenticates as
+    # its own federated identity — so, as with external-dns, no key or connection
+    # string reaches the cluster and none of these is a secret. The retention is
+    # here rather than in the manifest because it is the only bound on the blob
+    # bill, and a per-environment bound belongs with the other per-environment
+    # inputs rather than hardcoded into a tree three clusters share.
+    {
+      LOKI_CLIENT_ID        = module.loki_identity.client_id
+      LOKI_STORAGE_ACCOUNT  = local.loki_storage_account_name
+      LOKI_CHUNKS_CONTAINER = local.loki_containers.chunks.name
+      LOKI_RULER_CONTAINER  = local.loki_containers.ruler.name
+      # "14d", not "14". A ConfigMap value must be a string, and kustomize drops
+      # quotes around one that does not need them — so a bare number reaches the
+      # API server as a number and invalidates the whole cluster-vars ConfigMap.
+      # Carrying Loki's duration literal instead makes the value a string by
+      # construction, and keeps the unit next to the number it belongs to.
+      LOKI_RETENTION_PERIOD = "${var.loki_retention_days}d"
+    },
     {
       for key, identity in var.workload_identities :
       "${upper(replace(key, "-", "_"))}_CLIENT_ID" => module.workload_identity[key].client_id
@@ -555,6 +575,74 @@ locals {
       if identity.key_vault_secrets_user
     },
   )
+
+  # --- Loki log store --------------------------------------------------------
+  # See main.loki.tf. Object storage for Loki, reached over a private endpoint and
+  # written to with workload identity rather than an account key.
+
+  # No "-loki" role suffix, unlike every other resource here: storage account names
+  # admit no dashes and cap at 24 characters, and there is only ever one of these.
+  # name_unique rather than name because the namespace is global — an unqualified
+  # "st<workload><environment>" is exactly the name another subscription is likely
+  # to have taken, and the failure is at apply, not at plan.
+  loki_storage_account_name = module.naming.storage_account.name_unique
+
+  # Two containers, because Loki addresses them separately: chunks holds the log
+  # data and the TSDB index, ruler holds recording and alerting rule groups. A
+  # single container for both works until the ruler is enabled and then needs a
+  # migration, so the split is made now while it is free.
+  loki_containers = {
+    chunks = { name = "loki-chunks" }
+    ruler  = { name = "loki-ruler" }
+  }
+
+  # Loki's chart defaults are not used here — the release sets both explicitly —
+  # but the same three things still have to agree, exactly as with external-dns:
+  # the federated credential's subject below, the ServiceAccount the chart creates,
+  # and the annotation carrying the client ID.
+  loki_service_account = {
+    namespace = "monitoring"
+    name      = "loki"
+  }
+
+  # Follows the availability zones the cluster itself is spread over rather than
+  # being a variable of its own, on the same argument as local.dns_service_ip: a
+  # second input can only ever drift from the first. ZRS is the durable choice and
+  # costs more; in a single-zone dev cluster it buys nothing, because the zone it
+  # would replicate away from is the only one anything here runs in.
+  loki_storage_replication_type = length(var.availability_zones) > 1 ? "ZRS" : "LRS"
+
+  # Same shape as the workload vault's, and for the same reason: closing the public
+  # endpoint is what shuts the door, and the rules govern anything arriving anyway.
+  # bypass stays "None" as it does there — "AzureServices" would admit any
+  # Microsoft-operated service to an account meant to be reached from one VNet, and
+  # nothing here needs it: the private endpoint is not subject to these rules at
+  # all, and the containers are created through ARM rather than the data plane.
+  loki_storage_network = {
+    public_network_access_enabled = false
+
+    network_rules = {
+      bypass         = ["None"]
+      default_action = "Deny"
+    }
+  }
+
+  loki_private_endpoints = {
+    blob = {
+      name               = "pep-${local.loki_storage_account_name}"
+      subnet_resource_id = local.privatelink_subnet_id
+
+      # One subresource per endpoint. "blob" is the only one Loki speaks; an
+      # account exposes file, queue, table and dfs on separate subresources, and
+      # each would need its own endpoint, its own zone and its own link. Not
+      # creating them is what keeps this to one endpoint's worth of cost.
+      subresource_name = "blob"
+
+      # Creates the A record in privatelink.blob.core.windows.net and keeps it in
+      # step. The zone is the hub's; this cluster only links its VNet to it.
+      private_dns_zone_resource_ids = [data.azurerm_private_dns_zone.blob.id]
+    }
+  }
 
   # --- tenant workload identities -------------------------------------------
   # See main.tenants.tf. One user-assigned identity per tenant workload, federated

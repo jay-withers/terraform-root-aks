@@ -9,3 +9,5 @@ resources:
   - envoy-gateway.yaml
   - external-dns.yaml
   - kube-prometheus-stack.yaml
+  - loki.yaml
+  - alloy.yaml

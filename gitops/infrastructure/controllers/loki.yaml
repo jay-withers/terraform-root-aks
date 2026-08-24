@@ -1,0 +1,228 @@
+# Loki, the log half of the observability stack, pinned to the monitoring node pool
+# alongside Prometheus.
+#
+# Storage is the blob account in terraform/main.loki.tf, reached over a private
+# endpoint and written to with workload identity — there is no account key anywhere
+# in this file because there is no account key in existence: shared_access_key_enabled
+# is false on the account. That is also why the ServiceAccount annotation and the pod
+# label below are both load-bearing rather than belt-and-braces.
+#
+# Deliberately unlike Prometheus, which keeps its series on a zone-pinned managed
+# disk and treats them as disposable. Logs are what someone goes looking for after
+# the node that produced them is gone, so they go somewhere that outlives any node.
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: https://grafana.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  interval: 30m
+  releaseName: loki
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: loki
+      version: "7.3.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+      interval: 12h
+  install:
+    timeout: 15m
+    remediation:
+      retries: 3
+  upgrade:
+    timeout: 15m
+    remediation:
+      retries: 3
+  values:
+    # The chart defaults to SimpleScalable, which is read, write and backend as three
+    # separate StatefulSets plus an nginx gateway — sensible at volume, and four
+    # times the pod count this cluster has room for. SingleBinary runs every target
+    # in one process; the trade is that it does not scale horizontally, which is not
+    # a trade at one cluster's log volume.
+    deploymentMode: SingleBinary
+
+    # Explicitly zeroed. The chart templates guard on deploymentMode, but the values
+    # carry non-zero replica counts for these and a future chart version that guards
+    # differently would quietly deploy them.
+    write:
+      replicas: 0
+    read:
+      replicas: 0
+    backend:
+      replicas: 0
+
+    # Both are memcached StatefulSets, and both are ON by default — chunks-cache
+    # alone asks for 8 GiB of memory and 500m of CPU, which is the entire monitoring
+    # node. They buy query latency on a cluster doing enough queries to notice.
+    # Turning them on later is a values change, not a migration.
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+
+    # A DaemonSet that writes synthetic log lines and alerts if they do not come
+    # back. Genuine value at scale, one pod per node here.
+    lokiCanary:
+      enabled: false
+    test:
+      enabled: false
+
+    # nginx in front of the read and write paths, which is what makes SimpleScalable
+    # addressable as one endpoint. SingleBinary already is one endpoint, so this
+    # would be a reverse proxy from the service to itself. Grafana's datasource in
+    # kube-prometheus-stack.yaml points straight at the loki service instead.
+    gateway:
+      enabled: false
+
+    loki:
+      # Off, which means Loki stops requiring an X-Scope-OrgID header and files
+      # everything under a single tenant. Worth being explicit about what that does
+      # and does not do: it is not the cluster's multi-tenancy boundary. Every log
+      # line still carries its namespace as a label, but any Grafana user who can
+      # query Loki can query every namespace's logs. Grafana's own login is the
+      # access boundary today. Turning this on later means a tenant per namespace
+      # and a Grafana organisation to match, which is a migration, not a flag.
+      auth_enabled: false
+
+      # Required — the chart ships this empty and Loki will not start without it.
+      # v13/TSDB is the current schema; the `from` date is the day this schema
+      # begins and must never move backwards. Adding a schema later means appending
+      # a second entry with a future date, never editing this one, or Loki loses
+      # the ability to read everything written under the old one.
+      schemaConfig:
+        configs:
+          - from: "2024-04-01"
+            store: tsdb
+            object_store: azure
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+
+      storage:
+        type: azure
+        bucketNames:
+          chunks: ${LOKI_CHUNKS_CONTAINER}
+          ruler: ${LOKI_RULER_CONTAINER}
+        azure:
+          accountName: ${LOKI_STORAGE_ACCOUNT}
+          # Not useManagedIdentity. That is the older kubelet-identity path, where
+          # the pod inherits the node's identity and every pod on the node shares
+          # it. useFederatedToken exchanges the pod's own projected service account
+          # token, which is what the federated credential in terraform/main.loki.tf
+          # is bound to and what keeps this scoped to Loki rather than to the node.
+          useFederatedToken: true
+
+      # One, not the default three. Replication is between ingesters, and there is
+      # one ingester — at three, every write fails the quorum check it can never
+      # satisfy and Loki reports "at least 2 live replicas required".
+      commonConfig:
+        replication_factor: 1
+
+      limits_config:
+        retention_period: ${LOKI_RETENTION_PERIOD}
+        # The defaults assume a fleet. These are sized for one cluster's ingest and
+        # exist mainly so a runaway pod logging in a loop is rejected rather than
+        # silently becoming the blob bill.
+        ingestion_rate_mb: 8
+        ingestion_burst_size_mb: 16
+        max_query_series: 5000
+        reject_old_samples: true
+        reject_old_samples_max_age: 168h
+
+      # retention_period above is only a declaration; the compactor is what acts on
+      # it. Without retention_enabled the setting is read, reported and never
+      # applied, and the account grows forever — which is the failure mode worth
+      # knowing about, because nothing anywhere reports it.
+      compactor:
+        retention_enabled: true
+        delete_request_store: azure
+
+    singleBinary:
+      replicas: 1
+
+      # The webhook projects a token into the pod only if this label is present. It
+      # is a pod label, not a ServiceAccount annotation; both are needed and they
+      # are not interchangeable. Without it every blob write fails unauthenticated,
+      # and the ServiceAccount annotation alone looks correct while doing nothing.
+      podLabels:
+        azure.workload.identity/use: "true"
+
+      # Same pair as the rest of the stack: the taint on the monitoring pool repels
+      # everything else, the nodeSelector attracts this. Both are needed.
+      nodeSelector:
+        workload: monitoring
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: monitoring
+          effect: NoSchedule
+
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+
+      # Small on purpose, and not where the logs live. This holds the write-ahead
+      # log and the TSDB index being built before it ships to blob — everything
+      # durable is in the storage account. Losing this disk costs the last few
+      # minutes of ingest, not the history, which is the opposite of Prometheus's
+      # disk and the reason it can be a tenth of the size.
+      persistence:
+        enabled: true
+        storageClass: managed-csi
+        size: 10Gi
+
+    serviceAccount:
+      create: true
+      name: loki
+      annotations:
+        # Matched against the federated credential's subject by literal string —
+        # "system:serviceaccount:monitoring:loki". `terraform output
+        # loki_identity_subject` prints what Entra ID is expecting.
+        azure.workload.identity/client-id: ${LOKI_CLIENT_ID}
+---
+# Registers Loki with the Grafana that kube-prometheus-stack installs. Grafana's
+# sidecar watches every namespace for ConfigMaps carrying this label and writes what
+# it finds into the provisioning directory, so a datasource is declared here rather
+# than in the Grafana release's own values — which keeps Loki's configuration in
+# Loki's file and means neither chart has to know the other's release name.
+#
+# Not the default datasource: Prometheus keeps that, because a dashboard opened
+# without a datasource selected is far more often a metrics dashboard.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        # The single binary's own service, not a gateway — gateway.enabled is false
+        # above. Port 3100 is Loki's HTTP listener.
+        url: http://loki.monitoring.svc.cluster.local:3100
+        isDefault: false
+        jsonData:
+          # Caps what a single query renders in the browser. Loki will happily
+          # return far more than the UI can draw, and an unbounded label query
+          # against a busy namespace is the usual way to hang a Grafana tab.
+          maxLines: 1000

@@ -1,31 +1,31 @@
 # terraform-root-aks
 
-A private AKS cluster — VNet, NSGs, Key Vault, jump box and Flux — deployed as an
-**application landing zone spoke** of the platform in
+A private AKS cluster — VNet, NSGs, Key Vault, Loki log storage, jump box and Flux —
+deployed as an **application landing zone spoke** of the platform in
 [`jay-withers/azure-landingzone`](https://github.com/jay-withers/azure-landingzone).
 
 ## This is a spoke: apply the landing zone first
 
 This repo does not stand alone. The landing zone's `landingzones` component vends it a
 resource group and an identity, and its `connectivity` component owns the hub VNet and
-the private DNS zones this cluster links to. In the landing zone repo:
+the private DNS zones this cluster links to. Those components must already be applied
+in [`jay-withers/azure-landingzone`](https://github.com/jay-withers/azure-landingzone)
+before anything here can deploy — see that repo for its own apply order and commands.
 
-```bash
-make apply C=management
-make apply C=governance
-make apply C=connectivity
-make apply C=landingzones
-```
-
-Only then does `make apply` here have anywhere to deploy. What that means in practice:
+What that means in practice:
 
 | | Owned by | Notes |
 | --- | --- | --- |
 | Resource group | landing zone | Looked up, not created — the group *is* the landing zone, and this cluster's identity cannot create resource groups |
 | Region | landing zone | Taken from the vended group; there is no `location` variable |
-| `privatelink.vaultcore.azure.net` | hub | This creates only its own VNet link, in the hub's resource group |
+| `privatelink.vaultcore.azure.net` | hub | For the workload Key Vault. This creates only its own VNet link, in the hub's resource group |
+| `privatelink.blob.core.windows.net` | hub | For Loki's log store. Same as above — only the VNet link is created here |
 | Hub VNet | hub | This creates **both** halves of the peering — one side alone stays Initiated |
 | Address space | this repo | `10.1.0.0/16`, kept clear of the hub's `10.0.0.0/22`; Azure refuses to peer overlapping ranges |
+
+Both private DNS zones must be named in this landing zone's `linkable_dns_zones` in
+the landing zone repo, or the link fails with `AuthorizationFailed` while everything
+else applies cleanly.
 
 `workload_name` (default `aks`) must match the landing zone's key in the
 `landingzones` component — it derives the resource group name being looked up.
@@ -89,8 +89,8 @@ resource group. To enable the plan job:
    matching federated credential.
 
 Note the plan only succeeds once the landing zone is applied: the resource group, hub
-VNet and private DNS zone are all looked up, and a data source for something that does
-not exist yet fails at plan time.
+VNet and hub private DNS zones are all looked up, and a data source for something that
+does not exist yet fails at plan time.
 
 ## Branch protection
 
@@ -116,11 +116,15 @@ Terraform changes still satisfies it. Do **not** require `test`/`plan` directly
 .terraform-version     # pinned Terraform version (tfenv/tenv + CI)
 terraform/              # root config — applied directly, no examples/ (see CLAUDE.md)
   versions.tf          # required_version / required_providers + provider block
+  data.tf              # looked-up resource group, hub VNet, hub private DNS zones
+  locals.tf            # shared locals
   main.tf              # naming module
   main.aks.tf          # the cluster
   main.network.tf      # VNet, NSGs, cluster identity
+  main.dns.tf          # apps.internal zone + external-dns identity (created here, not the hub)
   main.hub.tf          # both halves of the hub peering
   main.keyvault.tf     # private workload Key Vault
+  main.loki.tf         # Loki log storage account + identity (hub-owned blob DNS zone link)
   main.jumpbox.tf      # jump box + Bastion
   main.flux.tf         # microsoft.flux extension + bootstrap configuration
   main.tenants.tf      # tenant workload identities
