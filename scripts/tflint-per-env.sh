@@ -26,8 +26,7 @@ fi
 
 # Deduplicated with sort -u rather than an associative array: `declare -A` is bash
 # 4+, and macOS ships bash 3.2 at /bin/bash, so the upstream template version of
-# this script fails outside the Linux dev container. protect-branch.sh avoids
-# mapfile for the same reason.
+# this script fails outside the Linux dev container.
 lint_dirs=()
 while IFS= read -r dir; do
   lint_dirs+=("$dir")

@@ -170,10 +170,10 @@ reusable module:
   a bare string as a glob, so regex values must keep their `/.../` delimiters, which
   is exactly what the migration emits.
 
-`scripts/check-tf-file-layout.sh`, `checkov-per-env.sh` and `protect-branch.sh` are
-verbatim copies — re-copy rather than hand-editing if they change upstream. One fix was
-needed in `tflint-per-env.sh`: the template uses `declare -A`, which is bash 4+ and
-fails on macOS's bash 3.2, so dedup is done with `sort -u` instead.
+`scripts/check-tf-file-layout.sh` and `checkov-per-env.sh` are verbatim copies —
+re-copy rather than hand-editing if they change upstream. One fix was needed in
+`tflint-per-env.sh`: the template uses `declare -A`, which is bash 4+ and fails
+on macOS's bash 3.2, so dedup is done with `sort -u` instead.
 
 ## Commands
 
