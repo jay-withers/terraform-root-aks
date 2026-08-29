@@ -57,10 +57,10 @@ repos:
 
   - repo: local
     hooks:
-      - id: check-tf-file-layout
-        name: Check locals/variables/outputs file layout
-        description: Fails if a `locals`/`variable`/`output` block isn't in a matching locals*.tf/variables*.tf/outputs*.tf file.
-        entry: scripts/check-tf-file-layout.sh
+      - id: check-tf-standards
+        name: Check Terraform file layout standards
+        description: "Fails if a locals/variable/output/data block isn't in a matching locals*.tf/variables*.tf/outputs*.tf/data*.tf file, or a terraform{}/provider{} block isn't in versions.tf."
+        entry: scripts/check-tf-standards.sh
         language: script
         pass_filenames: false
         files: \.tf$
