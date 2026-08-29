@@ -79,13 +79,15 @@ soft-delete/purge features), and is applied directly via `terraform -chdir=terra
 is pinned in `.terraform-version` at the
 repo root (tfenv/tenv and CI read it; it must stay at root to be discoverable).
 
-**File layout is enforced, not just conventional**: `locals`/`variable`/`output`
-blocks must live in a matching `locals.tf`/`variables.tf`/`outputs.tf` or a
-topic-scoped variant (`outputs.network.tf`), via the local pre-commit hook
-`scripts/check-tf-file-layout.sh`. TFLint's `terraform_standard_module_structure` is
+**File layout is enforced, not just conventional**:
+`locals`/`variable`/`output`/`data` blocks must live in a matching
+`locals.tf`/`variables.tf`/`outputs.tf`/`data.tf`, and `terraform{}`/`provider{}`
+blocks in `versions.tf`, or a topic-scoped variant of any of them
+(`outputs.network.tf`, `data.state.tf`), via the local pre-commit hook
+`scripts/check-tf-standards.sh`. TFLint's `terraform_standard_module_structure` is
 deliberately left disabled in `terraform/.tflint.hcl` in favour of that script, which
-also covers locals and topic-scoped names. Put new blocks in the right file from the
-start rather than relying on a later cleanup pass.
+also covers locals/data/versions and topic-scoped names. Put new blocks in the right
+file from the start rather than relying on a later cleanup pass.
 
 **There is no `terraform test` suite at present** — `terraform/tests/` was removed
 deliberately, along with the `test` job in `ci-terraform.yml` and the `make test`
@@ -170,7 +172,7 @@ reusable module:
   a bare string as a glob, so regex values must keep their `/.../` delimiters, which
   is exactly what the migration emits.
 
-`scripts/check-tf-file-layout.sh` and `checkov-per-env.sh` are verbatim copies —
+`scripts/check-tf-standards.sh` and `checkov-per-env.sh` are verbatim copies —
 re-copy rather than hand-editing if they change upstream. One fix was needed in
 `tflint-per-env.sh`: the template uses `declare -A`, which is bash 4+ and fails
 on macOS's bash 3.2, so dedup is done with `sort -u` instead.
