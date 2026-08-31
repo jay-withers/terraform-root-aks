@@ -45,7 +45,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "blob" {
 module "loki_storage" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-storage-storageaccount/azurerm"
-  version = "~> 0.6"
+  version = "~> 0.9"
 
   name      = local.loki_storage_account_name
   location  = local.location
