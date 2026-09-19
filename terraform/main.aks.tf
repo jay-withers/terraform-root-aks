@@ -1,7 +1,7 @@
 module "aks" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-containerservice-managedcluster/azurerm"
-  version = "~> 0.6"
+  version = "~> 0.8"
 
   name      = module.naming.kubernetes_cluster.name
   location  = local.location

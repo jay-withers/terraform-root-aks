@@ -146,7 +146,7 @@ Aligned to
 same dev container, pre-commit hook set, `scripts/`, Renovate preset, `ci-`/`cd-`
 workflow naming, reusable workflows from `template-pipelines` (SHA-pinned), and
 enforced file layout. Keep it in step; ecosystem-wide Renovate policy belongs in
-`template-renovate`, not here.
+`renovate`, not here.
 
 Three deliberate divergences, all downstream of this being a root config rather than a
 reusable module:
