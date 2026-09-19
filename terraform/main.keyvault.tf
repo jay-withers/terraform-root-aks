@@ -30,7 +30,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "key_vault" {
 module "workload_key_vault" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-keyvault-vault/azurerm"
-  version = "~> 0.10"
+  version = "~> 0.11"
   count   = var.workload_key_vault_enabled ? 1 : 0
 
   name                = local.workload_key_vault_name
