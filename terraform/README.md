@@ -15,29 +15,29 @@
 | Name | Version |
 | ---- | ------- |
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 4.81.0 |
-| <a name="provider_random"></a> [random](#provider\_random) | 3.9.0 |
+| <a name="provider_random"></a> [random](#provider\_random) | 3.9.1 |
 
 ## Modules
 
 | Name | Source | Version |
 | ---- | ------ | ------- |
-| <a name="module_aks"></a> [aks](#module\_aks) | Azure/avm-res-containerservice-managedcluster/azurerm | ~> 0.6 |
+| <a name="module_aks"></a> [aks](#module\_aks) | Azure/avm-res-containerservice-managedcluster/azurerm | ~> 0.8 |
 | <a name="module_aks_identity"></a> [aks\_identity](#module\_aks\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_bastion"></a> [bastion](#module\_bastion) | Azure/avm-res-network-bastionhost/azurerm | ~> 0.9 |
 | <a name="module_external_dns_identity"></a> [external\_dns\_identity](#module\_external\_dns\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_hub_naming"></a> [hub\_naming](#module\_hub\_naming) | Azure/naming/azurerm | ~> 0.4 |
 | <a name="module_jumpbox"></a> [jumpbox](#module\_jumpbox) | Azure/avm-res-compute-virtualmachine/azurerm | ~> 0.21 |
-| <a name="module_jumpbox_key_vault"></a> [jumpbox\_key\_vault](#module\_jumpbox\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.10 |
+| <a name="module_jumpbox_key_vault"></a> [jumpbox\_key\_vault](#module\_jumpbox\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.11 |
 | <a name="module_loki_identity"></a> [loki\_identity](#module\_loki\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
-| <a name="module_loki_storage"></a> [loki\_storage](#module\_loki\_storage) | Azure/avm-res-storage-storageaccount/azurerm | ~> 0.6 |
+| <a name="module_loki_storage"></a> [loki\_storage](#module\_loki\_storage) | Azure/avm-res-storage-storageaccount/azurerm | ~> 0.10 |
 | <a name="module_naming"></a> [naming](#module\_naming) | Azure/naming/azurerm | ~> 0.4 |
 | <a name="module_nsg_api_server"></a> [nsg\_api\_server](#module\_nsg\_api\_server) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
 | <a name="module_nsg_jumpbox"></a> [nsg\_jumpbox](#module\_nsg\_jumpbox) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
 | <a name="module_nsg_nodes"></a> [nsg\_nodes](#module\_nsg\_nodes) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
 | <a name="module_nsg_privatelink"></a> [nsg\_privatelink](#module\_nsg\_privatelink) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
-| <a name="module_vnet"></a> [vnet](#module\_vnet) | Azure/avm-res-network-virtualnetwork/azurerm | ~> 0.20 |
+| <a name="module_vnet"></a> [vnet](#module\_vnet) | Azure/avm-res-network-virtualnetwork/azurerm | ~> 0.22 |
 | <a name="module_workload_identity"></a> [workload\_identity](#module\_workload\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
-| <a name="module_workload_key_vault"></a> [workload\_key\_vault](#module\_workload\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.10 |
+| <a name="module_workload_key_vault"></a> [workload\_key\_vault](#module\_workload\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.11 |
 
 ## Resources
 
