@@ -24,10 +24,15 @@
 # The one rule this NSG does carry is that deliberate act in reverse: it names the
 # internal gateway's data path so it survives someone tightening these. See
 # local.node_nsg_rules — it allows nothing the defaults do not.
+#
+# All four NSG modules are held at 0.5.x. 0.6.0 moved the module from azurerm to
+# azapi and swapped resource_group_name for parent_id, and `~> 0.5` admitted it,
+# breaking validate on a fresh init. Moving to it is a migration with its own
+# plan to read, not a version bump.
 module "nsg_nodes" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5"
+  version = "~> 0.5.0"
 
   name                = "${module.naming.network_security_group.name}-nodes"
   location            = local.location
@@ -42,7 +47,7 @@ module "nsg_nodes" {
 module "nsg_api_server" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5"
+  version = "~> 0.5.0"
 
   name                = "${module.naming.network_security_group.name}-apiserver"
   location            = local.location
@@ -56,7 +61,7 @@ module "nsg_api_server" {
 module "nsg_privatelink" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5"
+  version = "~> 0.5.0"
 
   name                = "${module.naming.network_security_group.name}-privatelink"
   location            = local.location

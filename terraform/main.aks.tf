@@ -22,17 +22,27 @@ module "aks" {
 
   # System pool: cluster-critical add-ons only. The CriticalAddonsOnly taint
   # keeps application workloads off it — they schedule onto apps/monitoring.
+  #
+  # With single_node_pool it is the only pool, so it drops the taint and takes the
+  # monitoring pool's label instead: the observability stack's nodeSelector still
+  # matches, its toleration is simply never needed, and everything else lands here
+  # by default. Size, disk and labels are create-time on this pool — the module
+  # cannot change them in place, so flipping the toggle means a cluster rebuild.
   default_agent_pool = {
     name               = "system"
     mode               = "System"
     vm_size            = var.system_vm_size
     count_of           = var.system_node_count
     availability_zones = var.availability_zones
-    node_taints        = ["CriticalAddonsOnly=true:NoSchedule"]
+    os_disk_size_gb    = var.os_disk_size_gb
+    node_labels        = var.single_node_pool ? { workload = "monitoring" } : null
+    node_taints        = var.single_node_pool ? [] : ["CriticalAddonsOnly=true:NoSchedule"]
     vnet_subnet_id     = module.vnet.subnets["nodes"].resource_id
   }
 
-  agent_pools = {
+  # A for-filter rather than a conditional: `cond ? {} : {...}` fails to type-check,
+  # because the two branches are objects with different attributes.
+  agent_pools = { for name, pool in {
     # Default landing zone for application workloads. Untainted.
     apps = {
       name                = "apps"
@@ -43,6 +53,7 @@ module "aks" {
       min_count           = var.apps_min_count
       max_count           = var.apps_max_count
       count_of            = var.apps_min_count
+      os_disk_size_gb     = var.os_disk_size_gb
       vnet_subnet_id      = module.vnet.subnets["nodes"].resource_id
     }
 
@@ -57,11 +68,12 @@ module "aks" {
       min_count           = var.monitoring_min_count
       max_count           = var.monitoring_max_count
       count_of            = var.monitoring_min_count
+      os_disk_size_gb     = var.os_disk_size_gb
       node_labels         = { workload = "monitoring" }
       node_taints         = ["workload=monitoring:NoSchedule"]
       vnet_subnet_id      = module.vnet.subnets["nodes"].resource_id
     }
-  }
+  } : name => pool if !var.single_node_pool }
 
   sku = {
     name = "Base"

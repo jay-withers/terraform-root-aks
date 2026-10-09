@@ -26,6 +26,11 @@ spec:
         annotations:
           service.beta.kubernetes.io/azure-load-balancer-internal: "true"
           service.beta.kubernetes.io/azure-load-balancer-ipv4: ${GATEWAY_INTERNAL_IP}
+      # Two replicas only survive a node drain if the drain is made to take them one
+      # at a time. Without the budget both are evicted together and every route
+      # behind this Gateway is down until they reschedule.
+      envoyPDB:
+        minAvailable: 1
       envoyDeployment:
         replicas: 2
         container:

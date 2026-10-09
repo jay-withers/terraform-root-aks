@@ -1,0 +1,18 @@
+# What makes a node drain wait for whoami rather than through it. Without a budget
+# the drain evicts every replica at once, and the service is down until they are
+# rescheduled — the upgrade succeeds, the request path does not survive it.
+#
+# minAvailable 1 rather than maxUnavailable 1: it holds the floor at one serving
+# pod whatever the overlay sets replicas to. It does need at least two — at one,
+# the budget can never be met, and the drain blocks instead of evicting until the
+# pool's drain timeout fails the upgrade. Every overlay runs two or more.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: whoami
+  namespace: tenant-whoami
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: whoami

@@ -186,7 +186,7 @@ make install   # install pre-commit hooks (run once after cloning)
 make lint      # run all pre-commit hooks against every file
 make fmt       # terraform fmt -recursive
 make validate  # terraform init + validate
-make plan      # terraform init + plan
+make plan      # terraform init + plan (ENV=dev|stg|prd, default dev — never the bare module defaults, which are prd-shaped)
 ```
 
 ## Commit messages
@@ -205,3 +205,4 @@ Workflows are prefixed `ci-` (pull-request checks) or `cd-` (post-merge delivery
 - **ci-terraform**: a `changes` job (dorny/paths-filter) gates a `plan` job (`terraform plan` on `terraform/` directly, matrixed over dev/stg/prd, via Azure OIDC) so it runs only when a PR touches Terraform. The plan job is additionally gated on `if: vars.AZURE_CLIENT_ID != ''`, so it stays skipped until the `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID` repository variables are set. The `ci-terraform` gate job always runs and is the check to require in branch protection — path filtering is at the job level (not the workflow trigger) precisely so the required check always reports.
 - **ci-gitops**: the same shape for `gitops/**` — a `changes` job gates a `validate` job (`kustomize build` piped into `kubeconform`, CRD schemas from the datree catalog), behind a `ci-gitops` gate job to require in branch protection
 - **cd-tag**: auto-creates a semver tag on every merge to `main` (default bump: patch)
+- **cd-dev-power**: starts the dev cluster at 12:00 and stops it at 22:00 UK time (scheduled, plus `workflow_dispatch` for either by hand). Authenticates through the landing zone identity's existing `main` federated credential, so it needs the `AZURE_*` repository variables and nothing else; skipped until they exist
