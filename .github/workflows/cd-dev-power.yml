@@ -1,0 +1,106 @@
+name: cd-dev-power
+
+# Runs the dev cluster 12:00–22:00 UK time and stops it the rest of the day. A
+# stopped cluster bills nothing for node compute; the disks, load balancers and
+# private endpoints carry on, which is the floor this cannot go below.
+#
+# GitHub's cron is UTC-only and the UK is not, so each boundary is scheduled at
+# both of its possible UTC hours — once for GMT, once for BST — and the job acts
+# only on the run whose Europe/London hour matches. The other run is a no-op.
+# Scheduled runs can start late; a late run still acts while the London hour
+# matches, and start/stop are no-ops when the cluster is already there.
+#
+# A cluster started by hand outside those hours stays up until the next 22:00 stop
+# — nothing here reconciles it back. workflow_dispatch does either by hand.
+#
+# Authenticates as the landing zone's vended identity through its `main` federated
+# credential — scheduled and manually dispatched runs both present
+# refs/heads/main, so no new credential or grant is needed, and Contributor on the
+# resource group already covers start and stop. Do not add `environment:` to the
+# job: it changes the OIDC subject and the token exchange fails.
+
+on:
+  schedule:
+    - cron: "0 11,12 * * *" # start: 12:00 London
+    - cron: "0 21,22 * * *" # stop: 22:00 London
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Start or stop the dev cluster now
+        type: choice
+        options: [start, stop]
+        required: true
+
+permissions:
+  contents: read
+
+# Never two at once: a start and a stop racing would leave whichever lost failing
+# with an operation-in-progress conflict.
+concurrency:
+  group: cd-dev-power
+  cancel-in-progress: false
+
+env:
+  RESOURCE_GROUP: rg-aks-dev
+  CLUSTER_NAME: aks-aks-dev
+  START_HOUR: "12"
+  STOP_HOUR: "22"
+
+jobs:
+  power:
+    # Skipped rather than failing until the repository variables exist.
+    if: vars.AZURE_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Decide
+        id: decide
+        env:
+          DISPATCHED: ${{ inputs.action }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          if [ -n "$DISPATCHED" ]; then
+            echo "action=$DISPATCHED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          case "$SCHEDULE" in
+            "0 11,12 * * *") want=start; at=$START_HOUR ;;
+            "0 21,22 * * *") want=stop; at=$STOP_HOUR ;;
+            *) echo "::error::unrecognised schedule '$SCHEDULE'"; exit 1 ;;
+          esac
+
+          hour=$(TZ=Europe/London date +%H)
+          if [ "$hour" = "$at" ]; then
+            echo "action=$want" >> "$GITHUB_OUTPUT"
+          else
+            echo "London is ${hour}:xx, not ${at}:xx — this is the other UTC offset's run. Nothing to do."
+          fi
+
+      - name: Azure login
+        if: steps.decide.outputs.action != ''
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Start or stop
+        if: steps.decide.outputs.action != ''
+        env:
+          ACTION: ${{ steps.decide.outputs.action }}
+        run: |
+          state=$(az aks show -g "$RESOURCE_GROUP" -n "$CLUSTER_NAME" --query powerState.code -o tsv)
+          case "$ACTION/$state" in
+            start/Running | stop/Stopped)
+              echo "$CLUSTER_NAME is already $state."
+              exit 0
+              ;;
+          esac
+
+          # Waits for completion, so a stop refused mid-upgrade or mid-apply fails
+          # the run visibly rather than being reported as done.
+          echo "$CLUSTER_NAME is $state; running az aks $ACTION."
+          az aks "$ACTION" -g "$RESOURCE_GROUP" -n "$CLUSTER_NAME"

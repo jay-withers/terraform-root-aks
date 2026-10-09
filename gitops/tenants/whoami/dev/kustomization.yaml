@@ -1,17 +1,11 @@
-# whoami on the dev cluster. One replica: the dev apps pool scales to two small
-# nodes, and a second replica of a demo application is capacity better spent on the
-# platform components it exists to exercise.
+# whoami on the dev cluster — the base as-is, two replicas. Not one, even on a
+# single node: dev is where node upgrades are tested for zero downtime, and with a
+# single replica the PodDisruptionBudget in the base can never be satisfied, so the
+# drain blocks instead of moving the pod. Both replicas share the one node until a
+# surge node appears; the spread constraint in the base is ScheduleAnyway, so that
+# is allowed rather than leaving one Pending.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../base
-
-patches:
-  - target:
-      kind: Deployment
-      name: whoami
-    patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 1

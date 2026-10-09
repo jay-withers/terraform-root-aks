@@ -102,6 +102,23 @@ variable "availability_zones" {
   default     = ["1", "2", "3"]
 }
 
+variable "single_node_pool" {
+  description = "Run the whole cluster on the system pool alone: the apps and monitoring pools are not created, and the system pool drops its CriticalAddonsOnly taint and carries the monitoring pool's workload=monitoring label, so every workload — including the observability stack's nodeSelector — schedules onto it. For a cost-floor dev cluster; size system_vm_size for the lot, since the monitoring stack alone outgrows a single 8 GiB node. The apps_* and monitoring_* variables are ignored while this is true. The system pool's labels and taints are create-time, so changing this rebuilds the cluster."
+  type        = bool
+  default     = false
+}
+
+variable "os_disk_size_gb" {
+  description = "OS disk size for every node pool, in GiB. Null keeps the AKS default of 128, which is a P10 Premium SSD on Premium-capable sizes; 64 is a P6 at roughly half the price and still leaves the image cache room for the monitoring stack's images. AKS picks the disk SKU itself, so size is the only lever. Create-time on the system pool."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.os_disk_size_gb == null || try(var.os_disk_size_gb >= 30 && var.os_disk_size_gb <= 2048, false)
+    error_message = "os_disk_size_gb must be null or between 30 and 2048."
+  }
+}
+
 # --- networking -------------------------------------------------------------
 # The cluster is private by design: the API server has no public endpoint, and
 # is reachable only from inside the VNet or via `az aks command invoke`. See
@@ -302,6 +319,23 @@ variable "jumpbox_key_vault_allowed_ip_ranges" {
     ])
     error_message = "Key Vault IP rules accept public addresses only — Azure rejects the RFC1918 private ranges (10.x, 172.16-31.x, 192.168.x). To admit traffic from inside the VNet, use a service endpoint or private endpoint rather than an IP rule."
   }
+}
+
+variable "jumpbox_auto_shutdown_time" {
+  description = "Daily time to deallocate the jump box, as HHMM in jumpbox_auto_shutdown_timezone, e.g. \"2200\". Null (the default) leaves it running until someone stops it. Shutdown only — nothing starts it again, which suits a box that is started by hand when needed and otherwise forgotten. Free: it is an Azure DevTest Labs schedule on the VM, and needs the Microsoft.DevTestLab resource provider registered on the subscription."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.jumpbox_auto_shutdown_time == null || can(regex("^([01][0-9]|2[0-3])[0-5][0-9]$", var.jumpbox_auto_shutdown_time))
+    error_message = "jumpbox_auto_shutdown_time must be null or a 24-hour HHMM time, e.g. \"2200\"."
+  }
+}
+
+variable "jumpbox_auto_shutdown_timezone" {
+  description = "Windows time zone ID that jumpbox_auto_shutdown_time is read in. The default follows UK clock changes, so the shutdown stays at the same wall-clock time across BST."
+  type        = string
+  default     = "GMT Standard Time"
 }
 
 variable "bastion_enabled" {

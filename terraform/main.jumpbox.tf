@@ -175,6 +175,25 @@ module "jumpbox" {
   encryption_at_host_enabled = false
 }
 
+# The backstop for "deallocate it when it is not in use" above, which is the
+# instruction most likely to be forgotten. Shutdown only: it never starts the VM,
+# so a box nobody needs stays off, and one somebody needs is started by hand.
+# Deallocates rather than stops, so compute and the licence stop billing.
+resource "azurerm_dev_test_global_vm_shutdown_schedule" "jumpbox" {
+  count = var.jumpbox_enabled && var.jumpbox_auto_shutdown_time != null ? 1 : 0
+
+  virtual_machine_id    = module.jumpbox[0].resource_id
+  location              = local.location
+  enabled               = true
+  daily_recurrence_time = var.jumpbox_auto_shutdown_time
+  timezone              = var.jumpbox_auto_shutdown_timezone
+  tags                  = local.tags
+
+  notification_settings {
+    enabled = false
+  }
+}
+
 # The Developer SKU is free and needs no AzureBastionSubnet. If the landing zone's
 # region does not support it, set bastion_enabled = false. The portal will still offer to
 # deploy Bastion Developer on demand when you connect, and an unmanaged resource
