@@ -31,10 +31,10 @@
 | <a name="module_loki_identity"></a> [loki\_identity](#module\_loki\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_loki_storage"></a> [loki\_storage](#module\_loki\_storage) | Azure/avm-res-storage-storageaccount/azurerm | ~> 0.10 |
 | <a name="module_naming"></a> [naming](#module\_naming) | Azure/naming/azurerm | ~> 0.4 |
-| <a name="module_nsg_api_server"></a> [nsg\_api\_server](#module\_nsg\_api\_server) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
-| <a name="module_nsg_jumpbox"></a> [nsg\_jumpbox](#module\_nsg\_jumpbox) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
-| <a name="module_nsg_nodes"></a> [nsg\_nodes](#module\_nsg\_nodes) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
-| <a name="module_nsg_privatelink"></a> [nsg\_privatelink](#module\_nsg\_privatelink) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5 |
+| <a name="module_nsg_api_server"></a> [nsg\_api\_server](#module\_nsg\_api\_server) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5.0 |
+| <a name="module_nsg_jumpbox"></a> [nsg\_jumpbox](#module\_nsg\_jumpbox) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5.0 |
+| <a name="module_nsg_nodes"></a> [nsg\_nodes](#module\_nsg\_nodes) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5.0 |
+| <a name="module_nsg_privatelink"></a> [nsg\_privatelink](#module\_nsg\_privatelink) | Azure/avm-res-network-networksecuritygroup/azurerm | ~> 0.5.0 |
 | <a name="module_vnet"></a> [vnet](#module\_vnet) | Azure/avm-res-network-virtualnetwork/azurerm | ~> 0.22 |
 | <a name="module_workload_identity"></a> [workload\_identity](#module\_workload\_identity) | Azure/avm-res-managedidentity-userassignedidentity/azurerm | ~> 0.5 |
 | <a name="module_workload_key_vault"></a> [workload\_key\_vault](#module\_workload\_key\_vault) | Azure/avm-res-keyvault-vault/azurerm | ~> 0.11 |
