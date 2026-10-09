@@ -1,6 +1,13 @@
 terraform {
   required_version = ">= 1.6"
 
+  # Partial configuration: the account, container and key are per environment, in
+  # environments/<env>.tfbackend, and `make init` passes the one matching ENV. A
+  # single backend here could only ever point every environment at one state file.
+  # Entra ID auth only — the landing zone's state accounts have shared keys off.
+  # CI never touches this: it validates with `init -backend=false`.
+  backend "azurerm" {}
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"

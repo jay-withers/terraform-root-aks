@@ -79,6 +79,16 @@ soft-delete/purge features), and is applied directly via `terraform -chdir=terra
 is pinned in `.terraform-version` at the
 repo root (tfenv/tenv and CI read it; it must stay at root to be discoverable).
 
+**State is remote, one file per environment.** `versions.tf` declares an empty
+`backend "azurerm" {}`; the account, container and key come from
+`terraform/environments/<env>.tfbackend`, which `make init` passes for `ENV` with
+`-reconfigure` (`.terraform/` is shared, so switching environment must never offer a
+migration). Each environment's state lives in its own landing zone's state account
+(`stlzstatedev02d6` for dev), Entra ID auth only — shared keys are off, so whoever
+runs Terraform needs Storage Blob Data Contributor there. Only dev has a
+`.tfbackend` so far; `make plan ENV=stg` fails until one exists, which is the point.
+CI is unaffected: it validates with `init -backend=false`, as does `make validate`.
+
 **File layout is enforced, not just conventional**:
 `locals`/`variable`/`output`/`data` blocks must live in a matching
 `locals.tf`/`variables.tf`/`outputs.tf`/`data.tf`, and `terraform{}`/`provider{}`
@@ -185,7 +195,7 @@ on macOS's bash 3.2, so dedup is done with `sort -u` instead.
 make install   # install pre-commit hooks (run once after cloning)
 make lint      # run all pre-commit hooks against every file
 make fmt       # terraform fmt -recursive
-make validate  # terraform init + validate
+make validate  # terraform init -backend=false + validate (no Azure auth needed)
 make plan      # terraform init + plan (ENV=dev|stg|prd, default dev — never the bare module defaults, which are prd-shaped)
 ```
 
