@@ -4,14 +4,20 @@ name: cd-dev-power
 # stopped cluster bills nothing for node compute; the disks, load balancers and
 # private endpoints carry on, which is the floor this cannot go below.
 #
-# GitHub's cron is UTC-only and the UK is not, so each boundary is scheduled at
-# both of its possible UTC hours — once for GMT, once for BST — and the job acts
-# only on the run whose Europe/London hour matches. The other run is a no-op.
-# Scheduled runs can start late; a late run still acts while the London hour
-# matches, and start/stop are no-ops when the cluster is already there.
+# GitHub's cron is UTC-only and the UK is not, and scheduled runs are routinely
+# hours late or dropped outright (observed: 4–9 hours late, about half never ran).
+# So a run acts whenever London time is inside its action's window — a start run
+# anywhere in 12:00–22:00, a stop run anywhere in 22:00–12:00 — not only in the
+# boundary hour. Each boundary is scheduled three times, covering both UTC
+# offsets with a retry, at :23 rather than :00 because top-of-the-hour schedules
+# are the ones GitHub delays most. A run that lands outside its window (the GMT
+# run an hour early, or one so late the other boundary has passed) is a no-op,
+# and start/stop are no-ops when the cluster is already there.
 #
-# A cluster started by hand outside those hours stays up until the next 22:00 stop
-# — nothing here reconciles it back. workflow_dispatch does either by hand.
+# The retries mean a manual override near a boundary may be undone: a cluster
+# started by hand just after 22:00 can be stopped by a later stop run, and one
+# stopped by hand just after 12:00 restarted. Away from the boundaries it stays
+# as left until the next one. workflow_dispatch does either by hand.
 #
 # Authenticates as the landing zone's vended identity through its `main` federated
 # credential — scheduled and manually dispatched runs both present
@@ -21,8 +27,8 @@ name: cd-dev-power
 
 on:
   schedule:
-    - cron: "0 11,12 * * *" # start: 12:00 London
-    - cron: "0 21,22 * * *" # stop: 22:00 London
+    - cron: "23 11,12,13 * * *" # start: 12:00 London
+    - cron: "23 21,22,23 * * *" # stop: 22:00 London
   workflow_dispatch:
     inputs:
       action:
@@ -66,17 +72,24 @@ jobs:
             exit 0
           fi
 
+          # 10# because %H is zero-padded and 08/09 are invalid octal.
+          hour=$((10#$(TZ=Europe/London date +%H)))
+          if [ "$hour" -ge "$START_HOUR" ] && [ "$hour" -lt "$STOP_HOUR" ]; then
+            window=start
+          else
+            window=stop
+          fi
+
           case "$SCHEDULE" in
-            "0 11,12 * * *") want=start; at=$START_HOUR ;;
-            "0 21,22 * * *") want=stop; at=$STOP_HOUR ;;
+            "23 11,12,13 * * *") want=start ;;
+            "23 21,22,23 * * *") want=stop ;;
             *) echo "::error::unrecognised schedule '$SCHEDULE'"; exit 1 ;;
           esac
 
-          hour=$(TZ=Europe/London date +%H)
-          if [ "$hour" = "$at" ]; then
+          if [ "$want" = "$window" ]; then
             echo "action=$want" >> "$GITHUB_OUTPUT"
           else
-            echo "London is ${hour}:xx, not ${at}:xx — this is the other UTC offset's run. Nothing to do."
+            echo "London is ${hour}:xx, outside the $want window — early offset run, or so late the other boundary has passed. Nothing to do."
           fi
 
       - name: Azure login
