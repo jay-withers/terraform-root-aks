@@ -2,7 +2,10 @@
   "name": "terraform",
   "image": "ghcr.io/jay-withers/dev-containers/terraform:v0.16.15@sha256:48b0bca9c7f475d238b888d9a30b0afe56eb683c16af925778c01576810619d5",
   "mounts": [
-    "source=${localEnv:HOME}/Git,target=/Users/jay/Git,type=bind"
+    // The same source works on every host: Docker Desktop (macOS, Windows)
+    // resolves it inside its own VM. docker-socket-setup handles the ownership
+    // difference (a docker group on Linux, a root-owned socket on Desktop).
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
   "customizations": {
     "vscode": {
@@ -28,5 +31,6 @@
     }
   },
   "remoteUser": "vscode",
-  "postCreateCommand": "make install"
+  "postCreateCommand": "make install",
+  "postStartCommand": "sudo /usr/local/bin/docker-socket-setup"
 }
