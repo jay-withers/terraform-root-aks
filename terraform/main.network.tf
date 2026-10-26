@@ -32,12 +32,12 @@
 module "nsg_nodes" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5.0"
+  version = "~> 0.6.0"
 
-  name                = "${module.naming.network_security_group.name}-nodes"
-  location            = local.location
-  resource_group_name = local.resource_group_name
-  tags                = local.tags
+  name      = "${module.naming.network_security_group.name}-nodes"
+  location  = local.location
+  parent_id = local.resource_group_id
+  tags      = local.tags
 
   security_rules = local.node_nsg_rules
 }
@@ -47,12 +47,12 @@ module "nsg_nodes" {
 module "nsg_api_server" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5.0"
+  version = "~> 0.6.0"
 
-  name                = "${module.naming.network_security_group.name}-apiserver"
-  location            = local.location
-  resource_group_name = local.resource_group_name
-  tags                = local.tags
+  name      = "${module.naming.network_security_group.name}-apiserver"
+  location  = local.location
+  parent_id = local.resource_group_id
+  tags      = local.tags
 }
 
 # Ruleless like the two above. Note it governs the subnet, not the endpoints in it:
@@ -61,12 +61,12 @@ module "nsg_api_server" {
 module "nsg_privatelink" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5.0"
+  version = "~> 0.6.0"
 
-  name                = "${module.naming.network_security_group.name}-privatelink"
-  location            = local.location
-  resource_group_name = local.resource_group_name
-  tags                = local.tags
+  name      = "${module.naming.network_security_group.name}-privatelink"
+  location  = local.location
+  parent_id = local.resource_group_id
+  tags      = local.tags
 }
 
 module "vnet" {
