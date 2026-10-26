@@ -22,14 +22,14 @@
 module "nsg_jumpbox" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-networksecuritygroup/azurerm"
-  version = "~> 0.5.0"
+  version = "~> 0.6.0"
   count   = var.jumpbox_enabled ? 1 : 0
 
-  name                = "${module.naming.network_security_group.name}-jumpbox"
-  location            = local.location
-  resource_group_name = local.resource_group_name
-  security_rules      = local.jumpbox_nsg_rules
-  tags                = local.tags
+  name           = "${module.naming.network_security_group.name}-jumpbox"
+  location       = local.location
+  parent_id      = local.resource_group_id
+  security_rules = local.jumpbox_nsg_rules
+  tags           = local.tags
 }
 
 # The credential operators actually sign in with.
@@ -79,7 +79,7 @@ resource "random_password" "jumpbox_admin" {
 module "jumpbox_key_vault" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-keyvault-vault/azurerm"
-  version = "~> 0.11"
+  version = "~> 0.12"
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = local.jumpbox_key_vault_name
