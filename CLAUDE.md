@@ -81,13 +81,29 @@ repo root (tfenv/tenv and CI read it; it must stay at root to be discoverable).
 
 **State is remote, one file per environment.** `versions.tf` declares an empty
 `backend "azurerm" {}`; the account, container and key come from
-`terraform/environments/<env>.tfbackend`, which `make init` passes for `ENV` with
+`terraform/backends/<env>.hcl` (the layout `workflows`' `terraform-deploy.yml`
+expects), which `make init` passes for `ENV` with
 `-reconfigure` (`.terraform/` is shared, so switching environment must never offer a
 migration). Each environment's state lives in its own landing zone's state account
 (`stlzstatedev02d6` for dev), Entra ID auth only — shared keys are off, so whoever
 runs Terraform needs Storage Blob Data Contributor there. Only dev has a
-`.tfbackend` so far; `make plan ENV=stg` fails until one exists, which is the point.
-CI is unaffected: it validates with `init -backend=false`, as does `make validate`.
+backend file so far; `make plan ENV=stg` fails until one exists, which is the point.
+PR CI validates with `init -backend=false`, as does `make validate`.
+
+**Delivery is cd-terraform, like every other Terraform repo.** A merge touching
+`terraform/**` plans dev through `workflows`' `terraform-deploy.yml` in the `dev`
+GitHub environment, as the vended identity (`uai-aks-dev`, via the landing zone's
+`environment-dev` federated credential; github-repos' `pipeline_environments` sets
+the variables). A plan with changes opens a `terraform-pending` issue, and the user
+applies it with Actions → cd-terraform → Run workflow. Never dispatch it yourself.
+`schedule-drift` plans nightly and records an `OpsEvents_CL` row. `make apply`
+stays as break-glass. A local plan needs `TF_VAR_key_vault_administrator_object_ids`
+and `TF_VAR_administrator_object_id` exported (`gh variable list --env dev`).
+
+**Never grant to `data.azurerm_client_config.current.object_id`.** In CD that is the
+pipeline identity and locally it is you, so every apply would move the grant. The
+pipeline's own vault access uses `data.azurerm_user_assigned_identity.pipeline`
+(looked up by name), and the operator's uses the variables above.
 
 **File layout is enforced, not just conventional**:
 `locals`/`variable`/`output`/`data` blocks must live in a matching
@@ -212,7 +228,9 @@ Hooks are in `.pre-commit-config.yaml` at the repo root. The `no-commit-to-branc
 Workflows are prefixed `ci-` (pull-request checks) or `cd-` (post-merge delivery):
 
 - **ci-pre-commit**: runs all linters on PRs to `main`
-- **ci-terraform**: a `changes` job (dorny/paths-filter) gates a `plan` job (`terraform plan` on `terraform/` directly, matrixed over dev/stg/prd, via Azure OIDC) so it runs only when a PR touches Terraform. The plan job is additionally gated on `if: vars.AZURE_CLIENT_ID != ''`, so it stays skipped until the `AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID` repository variables are set. The `ci-terraform` gate job always runs and is the check to require in branch protection — path filtering is at the job level (not the workflow trigger) precisely so the required check always reports.
+- **ci-terraform**: credential-free init + validate through the shared workflow, which owns the path filter and the always-reporting gate; require `terraform / Terraform`. No PR plan: a plan only succeeds once the landing zone exists.
 - **ci-gitops**: the same shape for `gitops/**` — a `changes` job gates a `validate` job (`kustomize build` piped into `kubeconform`, CRD schemas from the datree catalog), behind a `ci-gitops` gate job to require in branch protection
 - **cd-tag**: auto-creates a semver tag on every merge to `main` (default bump: patch)
+- **cd-terraform**: plans dev on merge in the `dev` environment, opens a `terraform-pending` issue for a plan with changes, and applies when the user runs it by hand (see "Delivery is cd-terraform" above)
+- **schedule-drift**: nightly `drift: true` plan of dev, recording an `OpsEvents_CL` row
 - **cd-dev-power**: starts the dev cluster at 12:00 and stops it at 22:00 UK time (scheduled, plus `workflow_dispatch` for either by hand). Authenticates through the landing zone identity's existing `main` federated credential, so it needs the `AZURE_*` repository variables and nothing else; skipped until they exist

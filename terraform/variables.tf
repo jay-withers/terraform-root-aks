@@ -212,6 +212,16 @@ variable "workload_key_vault_enabled" {
   default     = true
 }
 
+variable "key_vault_administrator_object_ids" {
+  description = "Entra object IDs granted \"Key Vault Secrets Officer\" on both vaults alongside the pipeline identity, so the operator can read the jump box password and manage secrets. Set by github-repos on the `dev` environment as TF_VAR_KEY_VAULT_ADMINISTRATOR_OBJECT_IDS; a local plan needs it exported (`gh variable list --env dev`). No default, so a missing value fails the plan rather than dropping the grant."
+  type        = list(string)
+}
+
+variable "administrator_object_id" {
+  description = "The operator's Entra object ID, granted read access to Loki's log store for when Grafana itself is broken. Set by github-repos on the `dev` environment as TF_VAR_ADMINISTRATOR_OBJECT_ID."
+  type        = string
+}
+
 variable "workload_key_vault_secrets_users" {
   description = "Principal IDs to grant \"Key Vault Secrets User\" on the workload Key Vault — read-only access to secret values. This is where a workload identity goes: the object ID of the user-assigned identity federated to the Kubernetes service account that mounts secrets through the Key Vault CSI driver. Empty by default, which leaves only the deploying identity able to manage the vault. Inert unless workload_key_vault_enabled is true."
   type        = list(string)

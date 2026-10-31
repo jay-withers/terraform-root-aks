@@ -1,0 +1,30 @@
+name: schedule-drift
+
+# Nightly drift check: plans dev through the shared terraform-deploy.yml with
+# `drift: true`, which records the result (ok, drifted or failed) as one
+# OpsEvents_CL row and never applies or opens a `terraform-pending` issue. The
+# platform's alert on that table reports a drifted root. A drifted plan is still
+# a green run. To fix drift, run cd-terraform by hand, or change the
+# configuration to match.
+#
+# 03:31 UTC is while cd-dev-power has the cluster stopped. A stopped cluster's
+# power state isn't in the configuration, so it plans clean. Staggered minute so
+# the estate's drift checks don't all queue at once.
+on:
+  schedule:
+    - cron: "31 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    permissions:
+      id-token: write
+      contents: read
+      issues: write # a clean plan closes a stale deploy-failed issue
+    uses: jay-withers/workflows/.github/workflows/terraform-deploy.yml@058b978a7ace81ab39031ba2397cac9d526cd4a7 # v1.22.1
+    with:
+      environment: dev
+      drift: true

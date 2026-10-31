@@ -1,6 +1,15 @@
 # Tenant of the identity running Terraform; used as the cluster's Entra ID tenant.
 data "azurerm_client_config" "current" {}
 
+# The identity this repo's pipeline applies as, vended by the landing zone beside
+# the resource group (same naming suffix). Granted by name rather than through
+# azurerm_client_config, so a break-glass `make apply` from a laptop doesn't move
+# the pipeline's vault access to whoever ran it.
+data "azurerm_user_assigned_identity" "pipeline" {
+  name                = module.naming.user_assigned_identity.name
+  resource_group_name = data.azurerm_resource_group.landing_zone.name
+}
+
 # The landing zone this cluster deploys into. It is vended by the azure-landingzone
 # repo's `landingzones` component, not created here — the resource group *is* the
 # landing zone, and the identity this runs as has no rights to create resource

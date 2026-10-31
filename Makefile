@@ -12,12 +12,12 @@ $(error no tfvars for ENV=$(ENV): expected $(TF_DIR)/environments/$(ENV).tfvars)
 endif
 
 # Each environment's state lives in its own landing zone's state account, named in
-# environments/<env>.tfbackend. init always passes -reconfigure: .terraform/ is
+# backends/<env>.hcl. init always passes -reconfigure: .terraform/ is
 # shared across environments, so without it switching ENV either reuses the last
 # environment's backend or stops to offer a state migration nobody wants. Moving
 # state between backends is a deliberate `terraform init -migrate-state`, never
 # something make does.
-TF_BACKEND := -backend-config=environments/$(ENV).tfbackend
+TF_BACKEND := -backend-config=backends/$(ENV).hcl
 
 .DEFAULT_GOAL := help
 
@@ -35,7 +35,7 @@ lint: ## Run all pre-commit hooks against every file
 	pre-commit run --all-files
 
 init: ## terraform init against ENV's remote state (default dev)
-	@test -f $(TF_DIR)/environments/$(ENV).tfbackend || { echo "no backend for ENV=$(ENV): expected $(TF_DIR)/environments/$(ENV).tfbackend" >&2; exit 1; }
+	@test -f $(TF_DIR)/backends/$(ENV).hcl || { echo "no backend for ENV=$(ENV): expected $(TF_DIR)/backends/$(ENV).hcl" >&2; exit 1; }
 	terraform -chdir=$(TF_DIR) init -reconfigure $(TF_BACKEND)
 
 fmt: ## terraform fmt -recursive

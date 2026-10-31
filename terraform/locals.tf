@@ -471,14 +471,24 @@ locals {
   }
 
   # Owner grants no data-plane rights in RBAC mode, and Terraform needs them to write
-  # the secret. This covers whoever runs Terraform; anyone else signing in needs "Key
-  # Vault Secrets User" here, on top of the Reader roles Bastion requires.
-  jumpbox_key_vault_role_assignments = {
-    deployer = {
-      role_definition_id_or_name = "Key Vault Secrets Officer"
-      principal_id               = data.azurerm_client_config.current.object_id
+  # the secret. The pipeline identity writes it; the operators in
+  # var.key_vault_administrator_object_ids read it to sign in. Anyone else signing in
+  # needs "Key Vault Secrets User" here, on top of the Reader roles Bastion requires.
+  jumpbox_key_vault_role_assignments = merge(
+    {
+      deployer = {
+        role_definition_id_or_name = "Key Vault Secrets Officer"
+        principal_id               = data.azurerm_user_assigned_identity.pipeline.principal_id
+      }
+    },
+    {
+      for index, object_id in var.key_vault_administrator_object_ids :
+      "administrator_${index}" => {
+        role_definition_id_or_name = "Key Vault Secrets Officer"
+        principal_id               = object_id
+      }
     }
-  }
+  )
 
   # The optional second guard in front of the sign-in password, on top of RBAC.
   #
@@ -556,7 +566,14 @@ locals {
     {
       deployer = {
         role_definition_id_or_name = "Key Vault Secrets Officer"
-        principal_id               = data.azurerm_client_config.current.object_id
+        principal_id               = data.azurerm_user_assigned_identity.pipeline.principal_id
+      }
+    },
+    {
+      for index, object_id in var.key_vault_administrator_object_ids :
+      "administrator_${index}" => {
+        role_definition_id_or_name = "Key Vault Secrets Officer"
+        principal_id               = object_id
       }
     },
     {

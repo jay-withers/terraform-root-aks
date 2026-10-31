@@ -127,8 +127,12 @@ resource "azurerm_role_assignment" "loki_storage" {
 # itself is the thing that is broken. Without it the account is reachable from the
 # jump box but answers 403 to the person sitting on it — the keys are disabled, so
 # there is no other way in, and the first time anyone discovers that is mid-incident.
+#
+# The operator by explicit object ID, not whoever runs Terraform: in CD that is the
+# pipeline identity, which would take the grant away from the person.
 resource "azurerm_role_assignment" "loki_storage_deployer" {
   scope                = module.loki_storage.resource_id
   role_definition_name = "Storage Blob Data Reader"
-  principal_id         = data.azurerm_client_config.current.object_id
+  principal_id         = var.administrator_object_id
+  principal_type       = "User"
 }
