@@ -170,7 +170,7 @@ the dev container image does not carry them.
 Aligned to
 [`jay-withers/template-terraform-root`](https://github.com/jay-withers/template-terraform-root):
 same dev container, pre-commit hook set, `scripts/`, Renovate preset, `ci-`/`cd-`
-workflow naming, reusable workflows from `template-pipelines` (SHA-pinned), and
+workflow naming, reusable workflows from `workflows` (SHA-pinned), and
 enforced file layout. Keep it in step; ecosystem-wide Renovate policy belongs in
 `renovate`, not here.
 
