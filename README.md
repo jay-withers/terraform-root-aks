@@ -78,15 +78,12 @@ set the `AZURE_CLIENT_ID` repository variable**, so the repo stays green until A
 auth is wired up.
 
 You do not create the identity yourself — the landing zone repo's `landingzones`
-component vends it, already federated to this repository and scoped to this cluster's
-resource group. To enable the plan job:
-
-1. In the landing zone repo, run `terraform output github_secrets` after applying
-   `landingzones`.
-2. Add the three values it prints as **repository variables** here (Settings → Secrets
-   and variables → Actions → Variables): `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
-   `AZURE_SUBSCRIPTION_ID`. None are secret — a client ID is useless without a
-   matching federated credential.
+component vends it, already federated to this repository (`pull_request`, `main` and
+`environment:dev`) and scoped to this cluster's resource group. github-repos'
+`pipeline_environments` creates the `dev` GitHub environment and sets its
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` from the identity by
+name, so nothing is copied by hand. cd-terraform, schedule-drift and cd-dev-power all
+run in that environment.
 
 Note the plan only succeeds once the landing zone is applied: the resource group, hub
 VNet and hub private DNS zones are all looked up, and a data source for something that
