@@ -19,11 +19,12 @@ name: cd-dev-power
 # stopped by hand just after 12:00 restarted. Away from the boundaries it stays
 # as left until the next one. workflow_dispatch does either by hand.
 #
-# Authenticates as the landing zone's vended identity through its `main` federated
-# credential — scheduled and manually dispatched runs both present
-# refs/heads/main, so no new credential or grant is needed, and Contributor on the
-# resource group already covers start and stop. Do not add `environment:` to the
-# job: it changes the OIDC subject and the token exchange fails.
+# Authenticates as the landing zone's vended identity (uai-aks-dev) in the `dev`
+# environment, through its `environment-dev` federated credential, the same login
+# cd-terraform uses. github-repos sets the environment's AZURE_* variables.
+# Contributor on the resource group covers start and stop. The repository-level
+# AZURE_* variables it used to read named an identity that had since been
+# recreated, so every run failed with AADSTS700016.
 
 on:
   schedule:
@@ -54,8 +55,10 @@ env:
 
 jobs:
   power:
-    # Skipped rather than failing until the repository variables exist.
-    if: vars.AZURE_CLIENT_ID != ''
+    # No `if: vars.AZURE_CLIENT_ID != ''` gate: a job-level `if` is evaluated
+    # before the job enters its environment, so it would read empty and skip
+    # every run.
+    environment: dev
     runs-on: ubuntu-latest
     permissions:
       contents: read

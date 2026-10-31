@@ -233,4 +233,4 @@ Workflows are prefixed `ci-` (pull-request checks) or `cd-` (post-merge delivery
 - **cd-tag**: auto-creates a semver tag on every merge to `main` (default bump: patch)
 - **cd-terraform**: plans dev on merge in the `dev` environment, opens a `terraform-pending` issue for a plan with changes, and applies when the user runs it by hand (see "Delivery is cd-terraform" above)
 - **schedule-drift**: nightly `drift: true` plan of dev, recording an `OpsEvents_CL` row
-- **cd-dev-power**: starts the dev cluster at 12:00 and stops it at 22:00 UK time (scheduled, plus `workflow_dispatch` for either by hand). Authenticates through the landing zone identity's existing `main` federated credential, so it needs the `AZURE_*` repository variables and nothing else; skipped until they exist
+- **cd-dev-power**: starts the dev cluster at 12:00 and stops it at 22:00 UK time (scheduled, plus `workflow_dispatch` for either by hand). Runs in the `dev` environment as the vended identity, like cd-terraform, so it reads the environment's `AZURE_*` variables (set by github-repos), not repository variables
