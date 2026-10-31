@@ -15,7 +15,8 @@ jobs:
   # There is no plan job: a plan here only succeeds once the landing zone
   # exists (the resource group, the hub VNet and the hub's private DNS zone are
   # all looked up, and a data source for something not yet created fails at
-  # plan time). Applies are run by hand against remote state.
+  # plan time). The real plan is cd-terraform's, on merge, in the
+  # `terraform-pending` issue.
   terraform:
     permissions:
       contents: read

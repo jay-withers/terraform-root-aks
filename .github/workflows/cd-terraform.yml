@@ -1,0 +1,39 @@
+name: cd-terraform
+
+# Plans dev on every merge to main that touches Terraform, through the shared
+# terraform-deploy.yml, and applies only when run by hand (Actions -> Run
+# workflow), like every other Terraform repo. A plan with changes opens a
+# `terraform-pending` issue; the manual run applies exactly the plan it prints
+# and closes it.
+#
+# Runs in the `dev` GitHub environment as the identity the landing zone vends
+# (uai-aks-dev: Contributor and RBAC Administrator on rg-aks-dev, targeted hub
+# grants), through its `environment-dev` federated credential. github-repos'
+# pipeline_environments sets the environment's variables, including the
+# operator's TF_VAR_* object IDs. backends/dev.hcl and environments/dev.tfvars
+# are picked by `environment: dev`.
+#
+# Break-glass: `make apply` locally still works.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".terraform-version"
+      - ".github/workflows/cd-terraform.yml"
+  # The manual apply: also re-runs a failed apply, or corrects drift.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    permissions:
+      id-token: write
+      contents: read
+      issues: write # terraform-pending and deploy-failed issues
+    uses: jay-withers/workflows/.github/workflows/terraform-deploy.yml@058b978a7ace81ab39031ba2397cac9d526cd4a7 # v1.22.1
+    with:
+      environment: dev
+      apply: ${{ github.event_name == 'workflow_dispatch' }}
