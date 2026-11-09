@@ -79,7 +79,7 @@ resource "random_password" "jumpbox_admin" {
 module "jumpbox_key_vault" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-keyvault-vault/azurerm"
-  version = "~> 0.12"
+  version = "~> 0.12.0"
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = local.jumpbox_key_vault_name
@@ -110,7 +110,7 @@ module "jumpbox_key_vault" {
 module "jumpbox" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-compute-virtualmachine/azurerm"
-  version = "~> 0.21"
+  version = "~> 0.21.0"
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = "${module.naming.windows_virtual_machine.name}-jumpbox"
@@ -201,7 +201,7 @@ resource "azurerm_dev_test_global_vm_shutdown_schedule" "jumpbox" {
 module "bastion" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-bastionhost/azurerm"
-  version = "~> 0.9"
+  version = "~> 0.9.0"
   count   = var.jumpbox_enabled && var.bastion_enabled ? 1 : 0
 
   name      = local.bastion_name

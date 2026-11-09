@@ -24,7 +24,7 @@
 module "workload_identity" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source   = "Azure/avm-res-managedidentity-userassignedidentity/azurerm"
-  version  = "~> 0.5"
+  version  = "~> 0.6.0"
   for_each = var.workload_identities
 
   name                = local.workload_identity_names[each.key]
