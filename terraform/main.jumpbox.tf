@@ -79,7 +79,7 @@ resource "random_password" "jumpbox_admin" {
 module "jumpbox_key_vault" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-keyvault-vault/azurerm"
-  version = "~> 0.12.0"
+  version = "~> 0.13.0"
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = local.jumpbox_key_vault_name
