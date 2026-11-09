@@ -72,7 +72,7 @@ module "nsg_privatelink" {
 module "vnet" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-virtualnetwork/azurerm"
-  version = "~> 0.22"
+  version = "~> 0.22.3"
 
   name          = module.naming.virtual_network.name
   location      = local.location
@@ -92,7 +92,7 @@ module "vnet" {
 module "aks_identity" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-managedidentity-userassignedidentity/azurerm"
-  version = "~> 0.5"
+  version = "~> 0.6.0"
 
   name                = "${module.naming.user_assigned_identity.name}-cluster"
   location            = local.location

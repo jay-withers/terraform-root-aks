@@ -29,7 +29,7 @@ data "azurerm_resource_group" "landing_zone" {
 module "hub_naming" {
   #checkov:skip=CKV_TF_1:Registry-sourced module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/naming/azurerm"
-  version = "~> 0.4"
+  version = "~> 0.4.4"
 
   suffix = [var.hub_workload, var.environment]
 }
