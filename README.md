@@ -38,22 +38,25 @@ and `Private DNS Zone Contributor` on the specific zones it was granted.
 
 ## Getting started
 
-Open the repository in the dev container (VS Code: **Reopen in Container**, or
-GitHub Codespaces). The container ships with Terraform, TFLint, terraform-docs,
-and Checkov, and runs `make install` on creation to wire up the pre-commit hooks.
-
-Outside a dev container, install the hooks manually:
+Once per machine, set up the tools with
+[jay-withers/toolchain](https://github.com/jay-withers/toolchain)
+(`bash src/setup.sh`), which installs [mise](https://mise.jdx.dev). Then, in
+this repo:
 
 ```bash
-make install
+mise trust && make install   # make install runs `mise install` first
 ```
+
+`mise.toml` pins every tool this repo's hooks, build and CI use; CI installs
+the same versions (jay-withers/workflows v1.26.1+). Add a tool there rather
+than installing it by hand.
 
 ## Commands
 
 Run `make` (or `make help`) to list the available targets:
 
 ```bash
-make install   # install pre-commit hooks (run once after cloning)
+make install   # install mise tools and pre-commit hooks (run once after cloning)
 make lint      # run all pre-commit hooks against every file
 make fmt       # terraform fmt -recursive
 make validate  # terraform init + validate
@@ -61,7 +64,7 @@ make plan      # terraform init + plan
 ```
 
 Terraform targets run against the `terraform/` directory via `-chdir`. The
-Terraform version is pinned in `.terraform-version` (used by tfenv/tenv and CI).
+Terraform version is pinned in `mise.toml` (used locally and by CI).
 
 ## Testing
 
@@ -99,7 +102,7 @@ checks before merge:
 - **ci-gitops** — the `ci-gitops` gate job
 
 `ci-terraform` runs `terraform plan` only when a PR touches Terraform
-(`terraform/**`, `.terraform-version`, or the workflow), but the `ci-terraform`
+(`terraform/**`, `mise.toml`, or the workflow), but the `ci-terraform`
 gate job always runs and reports, so it is safe to require: a PR with no
 Terraform changes still satisfies it. Do **not** require `test`/`plan` directly
 — require the `ci-terraform` gate instead. `ci-gitops` works the same way for
@@ -108,9 +111,7 @@ Terraform changes still satisfies it. Do **not** require `test`/`plan` directly
 ## Structure
 
 ```text
-.devcontainer/
-  devcontainer.json    # dev container (ghcr.io/jay-withers/dev-container/terraform)
-.terraform-version     # pinned Terraform version (tfenv/tenv + CI)
+mise.toml              # pinned tool versions, used locally and in CI
 terraform/              # root config — applied directly, no examples/ (see CLAUDE.md)
   versions.tf          # required_version / required_providers + provider block
   data.tf              # looked-up resource group, hub VNet, hub private DNS zones

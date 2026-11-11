@@ -11,13 +11,6 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/(^|/)\\.terraform-version$/"],
-      "matchStrings": ["(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
-      "depNameTemplate": "hashicorp/terraform",
-      "datasourceTemplate": "github-releases"
-    },
-    {
-      "customType": "regex",
       "managerFilePatterns": ["/(^|/)\\.tflint\\.hcl$/"],
       "matchStrings": [
         "plugin \"azurerm\" \\{[^}]*version\\s*=\\s*\"(?<currentValue>[^\"]+)\"[^}]*source\\s*=\\s*\"github\\.com/(?<depName>[^\"]+)\""

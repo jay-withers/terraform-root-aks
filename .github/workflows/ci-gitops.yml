@@ -41,16 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Versions come from mise.toml, the same pins as local and the
+      # validate-gitops pre-commit hook.
       - name: Install kustomize and kubeconform
-        env:
-          KUSTOMIZE_VERSION: v5.8.1
-          KUBECONFORM_VERSION: v0.8.0
-        run: |
-          set -euo pipefail
-          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /usr/local/bin kustomize
-          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C /usr/local/bin kubeconform
+        uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        with:
+          install_args: kustomize kubeconform
 
       - name: Validate manifests
         run: ./scripts/validate-gitops.sh
