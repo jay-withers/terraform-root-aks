@@ -7,9 +7,9 @@
 # failed build, it is a Kustomization that reports NotReady where nobody is looking,
 # and no `terraform test` suite exists to catch it either.
 #
-# kustomize and kubeconform are not in the dev container image, which is external to
-# this repository. Missing tools are a skip rather than a failure so the hook stays
-# usable locally; ci-gitops installs both and is the authoritative check.
+# kustomize and kubeconform are pinned in mise.toml. Missing tools are a skip rather
+# than a failure, so the hook stays usable before `mise install`; ci-gitops installs
+# both and is the authoritative check.
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
