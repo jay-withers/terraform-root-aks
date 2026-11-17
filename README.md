@@ -59,8 +59,12 @@ Run `make` (or `make help`) to list the available targets:
 make install   # install mise tools and pre-commit hooks (run once after cloning)
 make lint      # run all pre-commit hooks against every file
 make fmt       # terraform fmt -recursive
-make validate  # terraform init + validate
-make plan      # terraform init + plan
+make validate  # terraform init -backend=false + validate (no Azure auth)
+make init      # terraform init against ENV's remote state (default dev)
+make plan      # terraform init + plan (ENV=dev|stg|prd, default dev)
+make apply     # break-glass only: dev is applied by running cd-terraform
+make destroy   # terraform destroy (ENV, default dev)
+make validate-gitops  # kustomize build + kubeconform over gitops/ (skips if the tools are absent)
 ```
 
 Terraform targets run against the `terraform/` directory via `-chdir`. The
@@ -68,45 +72,53 @@ Terraform version is pinned in `mise.toml` (used locally and by CI).
 
 ## Testing
 
-There is no `terraform test` suite at present. The checks that do run are
-`terraform validate` and the `ci-terraform` **plan** job, plus `ci-gitops` over the
-manifest tree. If a `terraform/tests/` directory comes back, re-add a `test` job to
-`ci-terraform.yml` and list it in that workflow's gate job.
+There is no `terraform test` suite at present. What runs is `terraform validate`
+(locally and in `ci-terraform`), the pre-commit hooks (TFLint and Checkov once per
+environment), and `ci-gitops` over the manifest tree. There is no plan on a pull
+request: the plan only succeeds once the landing zone is applied, since the resource
+group, hub VNet and hub private DNS zones are all looked up.
 
-## Azure auth for `terraform plan`
+## Delivery and Azure auth
 
-The `ci-terraform` **plan** job runs `terraform plan` against `terraform/` using
-GitHub OIDC (no long-lived secrets), once per environment. It is **skipped until you
-set the `AZURE_CLIENT_ID` repository variable**, so the repo stays green until Azure
-auth is wired up.
+You do not create the pipeline identity yourself. The landing zone repo's
+`landingzones` component vends `uai-aks-dev`, already federated to this repository
+(`pull_request`, `main` and `environment:dev`) and scoped to this cluster's resource
+group. github-repos' `pipeline_environments` creates the `dev` GitHub environment and
+sets its `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` from that
+identity by name, so nothing is copied by hand.
 
-You do not create the identity yourself — the landing zone repo's `landingzones`
-component vends it, already federated to this repository (`pull_request`, `main` and
-`environment:dev`) and scoped to this cluster's resource group. github-repos'
-`pipeline_environments` creates the `dev` GitHub environment and sets its
-`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` from the identity by
-name, so nothing is copied by hand. cd-terraform, schedule-drift and cd-dev-power all
-run in that environment.
+- **cd-terraform** plans dev on every merge touching Terraform and opens a
+  `terraform-pending` issue when the plan has changes. **Actions → cd-terraform → Run
+  workflow** applies it. `make apply` locally is break-glass only.
+- **schedule-drift** plans dev nightly and records the result in the platform's
+  `OpsEvents_CL` table. It never applies.
+- **cd-dev-power** starts the dev cluster at 12:00 and stops it at 22:00 UK time, so
+  node compute only bills in that window. Run it by hand to start or stop the cluster
+  now; a run near a boundary may undo a manual override.
+- **manual-terraform-unlock** releases a stuck state lock, given the lock ID from an
+  "Error acquiring the state lock" message.
 
-Note the plan only succeeds once the landing zone is applied: the resource group, hub
-VNet and hub private DNS zones are all looked up, and a data source for something that
-does not exist yet fails at plan time.
+All four run in the `dev` environment as the vended identity.
 
-## Branch protection
+A local `make plan` needs `az login` with Storage Blob Data Contributor on the landing
+zone's state account (`stlzstatedev02d6`), plus `TF_VAR_key_vault_administrator_object_ids`
+and `TF_VAR_administrator_object_id` exported (`gh variable list --env dev` shows them).
+Only dev has a backend file, so `ENV=stg` or `prd` fails until one exists.
 
-Add a ruleset (or branch protection rule) on `main` requiring these status
-checks before merge:
+## Pull request checks
 
-- **ci-pre-commit** — `pre-commit` job
-- **ci-terraform** — the `ci-terraform` gate job
-- **ci-gitops** — the `ci-gitops` gate job
+Required in the "Protect main" ruleset, which
+[github-repos](https://github.com/jay-withers/github-repos) manages (not this repo):
 
-`ci-terraform` runs `terraform plan` only when a PR touches Terraform
-(`terraform/**`, `mise.toml`, or the workflow), but the `ci-terraform`
-gate job always runs and reports, so it is safe to require: a PR with no
-Terraform changes still satisfies it. Do **not** require `test`/`plan` directly
-— require the `ci-terraform` gate instead. `ci-gitops` works the same way for
-`gitops/**`.
+- `pre-commit / Pre-commit` (**ci-pre-commit**: every hook)
+- `terraform / Terraform` (**ci-terraform**: credential-free init + validate, behind
+  the shared workflow's always-reporting gate)
+- `ci-gitops`, `changes` and `validate` (**ci-gitops**: `kustomize build` piped into
+  `kubeconform` when `gitops/**` changes, behind the always-running `ci-gitops` gate)
+
+**ci-codeql** scans the workflows with CodeQL, and code scanning is on for this repo,
+so a new high or critical alert blocks the merge. **cd-tag** tags a semver release on
+every merge to `main`.
 
 ## Structure
 
@@ -123,7 +135,7 @@ terraform/              # root config — applied directly, no examples/ (see CL
   main.hub.tf          # both halves of the hub peering
   main.keyvault.tf     # private workload Key Vault
   main.loki.tf         # Loki log storage account + identity (hub-owned blob DNS zone link)
-  main.jumpbox.tf      # jump box + Bastion
+  main.jumpbox.tf      # jump box + Developer Bastion
   main.flux.tf         # microsoft.flux extension + bootstrap configuration
   main.tenants.tf      # tenant workload identities
   variables.tf         # inputs
@@ -133,16 +145,24 @@ terraform/              # root config — applied directly, no examples/ (see CL
   environments/        # dev.tfvars, stg.tfvars, prd.tfvars
 gitops/                 # what Flux reconciles — see gitops/README.md
   clusters/<env>/      # bootstrap: the Flux objects that own everything else
-  infrastructure/      # cert-manager, Envoy Gateway, kube-prometheus-stack
+  infrastructure/      # cert-manager, Envoy Gateway, external-dns, kube-prometheus-stack, Loki, Alloy
   tenants/             # per-tenant onboarding (platform) + workloads (tenant)
 .pre-commit-config.yaml
 commitlint.config.js
 .github/
   workflows/
     ci-pre-commit.yml  # lints all files on PRs to main
-    ci-terraform.yml   # terraform validate + plan, gated to Terraform changes
+    ci-terraform.yml   # terraform validate, gated to Terraform changes
     ci-gitops.yml      # kustomize build + kubeconform, gated to gitops changes
+    ci-codeql.yml      # CodeQL over the workflows
+    cd-terraform.yml   # plans dev on merge; applies when run by hand
+    cd-dev-power.yml   # starts/stops the dev cluster on a UK-time schedule
     cd-tag.yml         # auto-tags on merge to main (semver patch bump)
+    schedule-drift.yml # nightly drift plan
+    manual-terraform-unlock.yml  # releases a stuck state lock
+scripts/
+  check-tf-standards.sh, tflint-per-env.sh, checkov-per-env.sh  # pre-commit hooks
+  validate-gitops.sh   # make validate-gitops / ci-gitops
 renovate.json          # automated dependency updates
 Makefile
 ```
