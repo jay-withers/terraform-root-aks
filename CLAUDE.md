@@ -166,10 +166,10 @@ Nothing in CI validates YAML beyond `check-yaml` and `actionlint`, so `ci-gitops
 `scripts/validate-gitops.sh`. It skips itself when kustomize or kubeconform is
 absent; with `mise install` done they are present, so the pre-commit hook runs it too.
 
-## Relationship to template-terraform-root
+## Relationship to template-repo-terraform-root
 
 Aligned to
-[`jay-withers/template-terraform-root`](https://github.com/jay-withers/template-terraform-root):
+[`jay-withers/template-repo-terraform-root`](https://github.com/jay-withers/template-repo-terraform-root):
 same `mise.toml` tools, pre-commit hook set, `scripts/`, Renovate preset, `ci-`/`cd-`
 workflow naming, reusable workflows from `workflows` (SHA-pinned), and
 enforced file layout. Keep it in step; ecosystem-wide Renovate policy belongs in
@@ -182,8 +182,8 @@ reusable module:
   block and cannot be planned on its own. This repo can be planned directly, and an
   example could not consume `terraform/environments/*.tfvars` without redeclaring the
   module's entire variable surface — the template's tfvars hold only `environment`,
-  whereas these hold real cluster tuning. `ci-terraform` therefore plans `terraform/`
-  directly, matrixed over `dev`/`stg`/`prd`.
+  whereas these hold real cluster tuning. `make plan` and cd-terraform therefore
+  plan `terraform/` directly (`ci-terraform` only validates it).
 - **Provider lock files are committed.** The template excludes them because consumers
   generate their own; a root config's locks are its own to pin. This is what the
   template's own `.gitignore` note says to do when repurposing it as a root config.
