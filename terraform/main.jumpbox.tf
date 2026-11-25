@@ -110,7 +110,7 @@ module "jumpbox_key_vault" {
 module "jumpbox" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-compute-virtualmachine/azurerm"
-  version = "~> 0.21.0"
+  version = "~> 0.22.0"
   count   = var.jumpbox_enabled ? 1 : 0
 
   name                = "${module.naming.windows_virtual_machine.name}-jumpbox"
