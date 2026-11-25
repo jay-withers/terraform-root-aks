@@ -201,7 +201,7 @@ resource "azurerm_dev_test_global_vm_shutdown_schedule" "jumpbox" {
 module "bastion" {
   #checkov:skip=CKV_TF_1:Registry-sourced AVM module pinned to a version constraint; commit-hash pinning does not apply to Terraform Registry sources.
   source  = "Azure/avm-res-network-bastionhost/azurerm"
-  version = "~> 0.9.0"
+  version = "~> 0.10.0"
   count   = var.jumpbox_enabled && var.bastion_enabled ? 1 : 0
 
   name      = local.bastion_name
